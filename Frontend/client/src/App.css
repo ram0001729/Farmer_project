@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #0f172a; /* slate-900 */
+  margin: 0;
+}
+
+
+
+
+
+/* hide iframe banner */
+/* iframe.goog-te-banner-frame removed */

@@ -1,0 +1,471 @@
+const https = require('https');
+const MarketItem = require("../models/MarketItem.model");
+const MarketOrder = require("../models/MarketOrder.model");
+const Booking = require("../models/Booking.model");
+const Listing = require("../models/Listing.model");
+
+// Simple in-memory cache
+const cache = {
+  timestamp: 0,
+  data: null,
+};
+
+function httpGetJson(url) {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, (res) => {
+        const { statusCode } = res;
+        if (statusCode !== 200) {
+          reject(new Error(`Request Failed. Status Code: ${statusCode}`));
+          res.resume();
+          return;
+        }
+
+        res.setEncoding('utf8');
+        let rawData = '';
+        res.on('data', (chunk) => {
+          rawData += chunk;
+        });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(rawData);
+            resolve(parsed);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      })
+      .on('error', (e) => {
+        reject(e);
+      });
+  });
+}
+
+
+const BASE_REFRESH_MS = Number(process.env.MARKET_REFRESH_MS || 60000); // default 1 minute
+const VOLATILITY = Number(process.env.MARKET_VOLATILITY || 0.04); // 4% volatility by default
+
+function getRefreshIntervalMs() {
+  // Higher volatility -> refresh more often
+  const factor = Math.max(0.1, Math.min(1.5, 1 + VOLATILITY));
+  return Math.max(5000, Math.floor(BASE_REFRESH_MS / factor));
+}
+
+async function fetchExternalPrices() {
+  const apiKey = process.env.COMMODITY_API_KEY;
+  const apiUrl = process.env.COMMODITY_API_URL || "https://www.commodity-api.com/api/v1/prices";
+
+  // In case the API key is not configured, return stubbed values.
+  if (!apiKey) {
+    return {
+      source: "stub",
+      prices: {
+        Wheat: 2450,
+        Rice: 2100,
+        Maize: 1850,
+        Cotton: 7200,
+      },
+    };
+  }
+
+  const symbols = (process.env.COMMODITY_SYMBOLS || "Wheat,Rice,Maize,Cotton").split(",").map((s) => s.trim()).join(",");
+
+  const url = `${apiUrl}?access_key=${encodeURIComponent(apiKey)}&symbols=${encodeURIComponent(symbols)}&base=INR`;
+
+  const json = await httpGetJson(url);
+
+  if (!json || !json.data) {
+    throw new Error("Invalid commodity API response");
+  }
+
+  // Normalize response into { Wheat: number, Rice: number } etc.
+  const prices = Object.entries(json.data).reduce((acc, [key, value]) => {
+    // Some APIs return nested objects; attempt to normalize
+    if (typeof value === "number") {
+      acc[key] = value;
+    } else if (value && typeof value === "object" && typeof value.price === "number") {
+      acc[key] = value.price;
+    }
+    return acc;
+  }, {});
+
+  return {
+    source: "commodity-api",
+    prices,
+  };
+}
+
+exports.getMarketPrices = async (req, res) => {
+  try {
+    const now = Date.now();
+    const refreshMs = getRefreshIntervalMs();
+
+    if (!cache.data || now - cache.timestamp > refreshMs) {
+      const external = await fetchExternalPrices();
+
+      cache.data = {
+        fetchedAt: new Date().toISOString(),
+        source: external.source,
+        volatility: VOLATILITY,
+        refreshIntervalMs: refreshMs,
+        prices: external.prices,
+      };
+      cache.timestamp = now;
+    }
+
+    res.json({ success: true, data: cache.data });
+  } catch (err) {
+    console.error("MARKET PRICES ERROR:", err);
+    res.status(502).json({ success: false, message: "Failed to fetch market prices" });
+  }
+};
+
+const DEFAULT_ITEMS = [
+  {
+    name: "Urea 46% N",
+    category: "fertilizer",
+    image:
+      "https://images.unsplash.com/photo-1585314062604-1a357de8b000?auto=format&fit=crop&w=900&q=80",
+    price: 299,
+    unit: "50 kg bag",
+    brand: "IFFCO",
+    bestFor: "Wheat, Paddy",
+    stockQty: 40,
+    description: "High nitrogen fertilizer for vegetative growth.",
+  },
+  {
+    name: "DAP 18-46",
+    category: "fertilizer",
+    image:
+      "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=80",
+    price: 1350,
+    unit: "50 kg bag",
+    brand: "Coromandel",
+    bestFor: "Cotton, Maize",
+    stockQty: 22,
+    description: "Balanced phosphate-rich fertilizer.",
+  },
+  {
+    name: "Power Sprayer 20L",
+    category: "equipment",
+    image:
+      "https://images.unsplash.com/photo-1625768372444-16f6c68f0f13?auto=format&fit=crop&w=900&q=80",
+    price: 3499,
+    unit: "per unit",
+    rentalAvailable: true,
+    rentalPrice: 220,
+    rentalUnit: "day",
+    minimumRentalPeriod: 1,
+    brand: "KisanPro",
+    bestFor: "Pesticide spraying",
+    stockQty: 12,
+    description: "Portable sprayer with high-pressure output.",
+  },
+  {
+    name: "Mini Seed Drill",
+    category: "equipment",
+    image:
+      "https://images.unsplash.com/photo-1597916829826-02e5bb4a54e0?auto=format&fit=crop&w=900&q=80",
+    price: 8999,
+    unit: "per unit",
+    rentalAvailable: true,
+    rentalPrice: 900,
+    rentalUnit: "day",
+    minimumRentalPeriod: 2,
+    brand: "AgroTech",
+    bestFor: "Line sowing",
+    stockQty: 8,
+    description: "Compact seed drill suitable for medium farm operations.",
+  },
+];
+
+let seedDone = false;
+async function seedItemsIfNeeded() {
+  if (seedDone) return;
+  const count = await MarketItem.countDocuments();
+  if (count > 0) {
+    seedDone = true;
+    return;
+  }
+
+  const adminLikeUserId = process.env.MARKET_SELLER_USER_ID || null;
+  if (!adminLikeUserId) {
+    seedDone = true;
+    return;
+  }
+
+  const docs = DEFAULT_ITEMS.map((item) => ({
+    ...item,
+    sellerId: adminLikeUserId,
+  }));
+  await MarketItem.insertMany(docs);
+  seedDone = true;
+}
+
+exports.listMarketItems = async (req, res) => {
+  try {
+    await seedItemsIfNeeded();
+
+    const { query, category } = req.query;
+    const filter = { isActive: true };
+
+    if (category && ["fertilizer", "equipment"].includes(category)) {
+      filter.category = category;
+    }
+
+    if (query) {
+      filter.$or = [
+        { name: { $regex: query, $options: "i" } },
+        { brand: { $regex: query, $options: "i" } },
+        { bestFor: { $regex: query, $options: "i" } },
+      ];
+    }
+
+    const items = await MarketItem.find(filter)
+      .populate("sellerId", "name role")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, items });
+  } catch (err) {
+    console.error("LIST MARKET ITEMS ERROR:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch market items" });
+  }
+};
+
+exports.createMarketItem = async (req, res) => {
+  try {
+    if (!["equipment_provider", "admin"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Only equipment providers can add market items" });
+    }
+
+    const {
+      name,
+      category,
+      description,
+      brand,
+      bestFor,
+      image,
+      price,
+      unit,
+      stockQty,
+      rentalAvailable,
+      rentalPrice,
+      rentalUnit,
+      minimumRentalPeriod,
+    } = req.body;
+    if (!name || !category || price === undefined) {
+      return res.status(400).json({ error: "name, category and price are required" });
+    }
+
+    if (!["fertilizer", "equipment"].includes(category)) {
+      return res.status(400).json({ error: "Invalid category" });
+    }
+
+    const item = await MarketItem.create({
+      sellerId: req.user.userId,
+      name,
+      category,
+      description: description || "",
+      brand: brand || "",
+      bestFor: bestFor || "",
+      image: image || "",
+      price: Number(price),
+      unit: unit || "per unit",
+      rentalAvailable: Boolean(rentalAvailable) && category === "equipment",
+      rentalPrice: category === "equipment" && rentalAvailable ? Number(rentalPrice) || 0 : 0,
+      rentalUnit: category === "equipment" && rentalAvailable ? rentalUnit || "day" : "day",
+      minimumRentalPeriod:
+        category === "equipment" && rentalAvailable
+          ? Math.max(1, Number(minimumRentalPeriod) || 1)
+          : 1,
+      stockQty: Number.isFinite(Number(stockQty)) ? Number(stockQty) : 0,
+    });
+
+    res.status(201).json({ success: true, item });
+  } catch (err) {
+    console.error("CREATE MARKET ITEM ERROR:", err);
+    res.status(500).json({ success: false, error: "Failed to create market item" });
+  }
+};
+
+exports.getMyMarketItems = async (req, res) => {
+  try {
+    const items = await MarketItem.find({ sellerId: req.user.userId }).sort({ createdAt: -1 });
+    res.json({ success: true, items });
+  } catch (err) {
+    console.error("GET MY MARKET ITEMS ERROR:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch your market items" });
+  }
+};
+
+exports.createMarketOrder = async (req, res) => {
+  try {
+    if (req.user.role !== "farmer") {
+      return res.status(403).json({ error: "Only farmers can place orders" });
+    }
+
+    const { itemId, quantity = 1, paymentMethod, orderType = "purchase", rentalDuration } = req.body;
+    if (!itemId || !paymentMethod) {
+      return res.status(400).json({ error: "itemId and paymentMethod are required" });
+    }
+
+    if (!["online", "offline"].includes(paymentMethod)) {
+      return res.status(400).json({ error: "Invalid payment method" });
+    }
+
+    if (!["purchase", "rental"].includes(orderType)) {
+      return res.status(400).json({ error: "Invalid order type" });
+    }
+
+    const item = await MarketItem.findById(itemId);
+    if (!item || !item.isActive) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    const qty = Math.max(1, Number(quantity) || 1);
+
+    if (orderType === "rental") {
+      if (item.category !== "equipment" || !item.rentalAvailable) {
+        return res.status(400).json({ error: "This item is not available for rental" });
+      }
+
+      const duration = Math.max(1, Number(rentalDuration) || 0);
+      if (duration < item.minimumRentalPeriod) {
+        return res.status(400).json({ error: `Minimum rental period is ${item.minimumRentalPeriod} ${item.rentalUnit}(s)` });
+      }
+    }
+
+    if (item.stockQty < qty) {
+      return res.status(400).json({ error: "Insufficient stock" });
+    }
+
+    item.stockQty -= qty;
+    await item.save();
+
+    const normalizedOrderType = orderType === "rental" ? "rental" : "purchase";
+    const normalizedRentalDuration = normalizedOrderType === "rental" ? Math.max(1, Number(rentalDuration) || 1) : null;
+    const unitPrice = normalizedOrderType === "rental" ? item.rentalPrice : item.price;
+    const totalAmount = normalizedOrderType === "rental"
+      ? unitPrice * qty * normalizedRentalDuration
+      : item.price * qty;
+
+    const order = await MarketOrder.create({
+      farmerId: req.user.userId,
+      sellerId: item.sellerId,
+      itemId: item._id,
+      quantity: qty,
+      orderType: normalizedOrderType,
+      rentalDuration: normalizedRentalDuration,
+      rentalUnit: normalizedOrderType === "rental" ? item.rentalUnit : null,
+      unitPrice,
+      totalAmount,
+      paymentMethod,
+      status: "placed",
+    });
+
+    res.status(201).json({ success: true, order });
+  } catch (err) {
+    console.error("CREATE MARKET ORDER ERROR:", err);
+    res.status(500).json({ success: false, error: "Failed to place order" });
+  }
+};
+
+exports.getMyMarketOrders = async (req, res) => {
+  try {
+    const orders = await MarketOrder.find({ farmerId: req.user.userId })
+      .populate("itemId", "name category image unit")
+      .populate("sellerId", "name")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, orders });
+  } catch (err) {
+    console.error("GET MY MARKET ORDERS ERROR:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch orders" });
+  }
+};
+
+exports.getProviderMarketOrders = async (req, res) => {
+  try {
+    const orders = await MarketOrder.find({ sellerId: req.user.userId })
+      .populate("itemId", "name category image unit")
+      .populate("farmerId", "name mobile")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, orders });
+  } catch (err) {
+    console.error("GET PROVIDER MARKET ORDERS ERROR:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch provider orders" });
+  }
+};
+
+exports.getProviderAnalytics = async (req, res) => {
+  try {
+    const providerId = req.user.userId;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [bookings, listings, marketOrders] = await Promise.all([
+      Booking.find({ providerId }).populate("listingId", "title"),
+      Listing.find({ ownerId: providerId }).select("title"),
+      MarketOrder.find({ sellerId: providerId }).populate("itemId", "name"),
+    ]);
+
+    const totalBookings = bookings.length;
+    const completedBookings = bookings.filter((b) => b.status === "completed").length;
+    const monthlyBookings = bookings.filter((b) => new Date(b.createdAt) >= monthStart).length;
+
+    const conversionRate = totalBookings
+      ? Number(((completedBookings / totalBookings) * 100).toFixed(1))
+      : 0;
+
+    const topCounter = new Map();
+    bookings.forEach((b) => {
+      const key = b.listingId?.title || "Unknown service";
+      topCounter.set(key, (topCounter.get(key) || 0) + 1);
+    });
+    marketOrders.forEach((o) => {
+      const key = o.itemId?.name || "Unknown item";
+      topCounter.set(key, (topCounter.get(key) || 0) + 1);
+    });
+
+    let topItemService = "N/A";
+    let topCount = 0;
+    for (const [name, count] of topCounter.entries()) {
+      if (count > topCount) {
+        topItemService = name;
+        topCount = count;
+      }
+    }
+
+    const confirmedBookings = bookings.filter((b) => b.status === "confirmed" || b.status === "started" || b.status === "completed");
+    const responseSamples = confirmedBookings
+      .map((b) => {
+        const created = new Date(b.createdAt).getTime();
+        const reference = b.confirmedAt ? new Date(b.confirmedAt).getTime() : new Date(b.updatedAt).getTime();
+        if (!created || !reference || reference < created) return null;
+        return (reference - created) / (1000 * 60);
+      })
+      .filter((v) => v !== null);
+
+    const averageResponseTimeMinutes = responseSamples.length
+      ? Number((responseSamples.reduce((a, b) => a + b, 0) / responseSamples.length).toFixed(1))
+      : 0;
+
+    res.json({
+      success: true,
+      analytics: {
+        monthlyBookings,
+        totalBookings,
+        completedBookings,
+        conversionRate,
+        topItemService,
+        averageResponseTimeMinutes,
+        totalListings: listings.length,
+        totalItemOrders: marketOrders.length,
+      },
+    });
+  } catch (err) {
+    console.error("GET PROVIDER ANALYTICS ERROR:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch analytics" });
+  }
+};

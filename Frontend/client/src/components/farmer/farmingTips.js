@@ -1,0 +1,23 @@
+export const farmingTips = [
+  "🌾 Rotate crops every season to maintain soil fertility.",
+  "💧 Water crops early morning to reduce evaporation loss.",
+  "🐞 Ladybugs help control aphids naturally.",
+  "🌱 Use compost to improve soil structure and nutrients.",
+  "🌽 Plant nitrogen-fixing crops like legumes.",
+  "🐝 Protect pollinators like bees for better yields.",
+  "🌿 Mulching helps retain soil moisture.",
+  "🚜 Regular tractor maintenance saves fuel.",
+  "🪱 Earthworms improve soil aeration.",
+  "🌾 Use drip irrigation to save water.",
+  "🌻 Sunflowers attract beneficial insects.",
+  "🌱 Test soil pH before applying fertilizers.",
+  "🐜 Ants help in natural pest control.",
+  "🌿 Neem oil works as an organic pesticide.",
+  "💧 Avoid overwatering crops to prevent root rot.",
+  "🌽 Intercropping can reduce pest damage.",
+  "🌾 Remove weeds early to avoid nutrient competition.",
+  "🐝 Flower borders attract pollinators.",
+  "🌱 Cover crops prevent soil erosion.",
+  "🪱 Organic matter increases microbial activity.",
+  // add up to 30+
+];

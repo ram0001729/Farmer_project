@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  button,
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  a[role="button"] {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-all duration-300 ease-out;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F57C00] focus-visible:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-60;
+    min-height: 2.75rem;
+    font-size: clamp(0.86rem, 0.8rem + 0.25vw, 1rem);
+    padding-inline: clamp(0.85rem, 0.7rem + 0.45vw, 1.45rem);
+    padding-block: clamp(0.55rem, 0.5rem + 0.2vw, 0.78rem);
+  }
+
+  button:hover,
+  [type="button"]:hover,
+  [type="submit"]:hover,
+  [type="reset"]:hover,
+  a[role="button"]:hover {
+    transform: translateY(-1px);
+  }
+
+  button:active,
+  [type="button"]:active,
+  [type="submit"]:active,
+  [type="reset"]:active,
+  a[role="button"]:active {
+    transform: scale(0.98);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button,
+    [type="button"],
+    [type="submit"],
+    [type="reset"],
+    a[role="button"] {
+      transition: none;
+    }
+
+    button:hover,
+    [type="button"]:hover,
+    [type="submit"]:hover,
+    [type="reset"]:hover,
+    a[role="button"]:hover,
+    button:active,
+    [type="button"]:active,
+    [type="submit"]:active,
+    [type="reset"]:active,
+    a[role="button"]:active {
+      transform: none;
+    }
+  }
+}
+
+@layer components {
+
+  /* Input */
+  .input {
+    @apply w-full px-4 py-3 rounded-xl 
+    border border-[#E79B63]/40 
+    bg-white/70 backdrop-blur-sm 
+    focus:outline-none 
+    focus:ring-2 focus:ring-[#F57C00] 
+    focus:border-[#F57C00] 
+    transition;
+  }
+
+  /* Primary Button (Harvest Orange CTA) */
+  .primary-btn {
+    @apply px-6 py-3 rounded-xl 
+    bg-[#F57C00] text-white font-semibold 
+    hover:bg-[#E79B63] 
+    transition-all duration-300 
+    shadow-md shadow-[#F57C00]/30 
+    hover:shadow-lg hover:shadow-[#F57C00]/35
+    hover:scale-105 active:scale-95;
+  }
+
+  /* Secondary Button (Teal Outline Style) */
+.secondary-btn {
+  @apply px-6 py-3 rounded-xl
+  bg-blue-600 text-white font-semibold
+  transition-all duration-300 shadow-md shadow-blue-600/20
+  hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-600/25
+  active:scale-95;
+}
+
+.secondary-btn:hover {
+  @apply text-white;
+}
+
+
+
+
+  /* Danger Button */
+  .danger-btn {
+  @apply px-6 py-3 rounded-xl
+  bg-red-600 text-white font-semibold
+  hover:bg-red-700
+  transition-all duration-200
+  shadow-md shadow-red-600/30
+  hover:shadow-lg hover:shadow-red-600/35
+  active:scale-95;
+}
+
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease-out;
+}
