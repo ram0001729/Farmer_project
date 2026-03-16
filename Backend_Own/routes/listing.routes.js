@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const listingCtrl = require('../controllers/listing.controller');
 const auth = require('../middlewares/auth.middleware');
+const upload = require('../utils/upload');
 const { body, param, query } = require('express-validator');
 const validate = require('../middlewares/validate');
 
@@ -83,6 +84,13 @@ router.patch(
   "/location",
   auth.authenticate,
     listingCtrl.updateDriverLocation
+);
+
+router.post(
+  '/upload-image',
+  auth.authenticate,
+  upload.single('image'),
+  listingCtrl.uploadListingImage
 );
 
 

@@ -5,12 +5,16 @@ import {
   updateListing,
   deleteListing,
   getSingleListing,
+  uploadListingImage,
 } from "../../services/listingService";
 import { getCurrentLocation } from "../../services/locationservice";
 import {
   FiTruck, FiUser, FiTool, FiMapPin, FiCheckCircle,
-  FiAlertCircle, FiTrash2, FiSave, FiPlusCircle, FiLoader, FiLock,
+  FiAlertCircle, FiTrash2, FiSave, FiPlusCircle, FiLoader, FiLock, FiCamera,
 } from "react-icons/fi";
+import driverTypeImg from "@/assets/provider-types/driver.svg";
+import labourTypeImg from "@/assets/provider-types/labour.svg";
+import equipmentTypeImg from "@/assets/provider-types/equipment.svg";
 
 const initialFormState = {
   title: "",
@@ -22,29 +26,28 @@ const initialFormState = {
   priceUnit: "hour",
   available: true,
   location: undefined,
-  vehicleDetails: { model: "", regNumber: "", condition: "" },
-  meta: { brand: "", stock: "", useCase: "", image: "" },
+  meta: { brand: "", stock: "", useCase: "", image: "", listingType: "sell" },
 };
 
 const ROLE_OPTIONS = [
-  { value: "driver",             label: "Driver",             icon: FiTruck },
-  { value: "labour",             label: "Labour",             icon: FiUser  },
-  { value: "equipment_provider", label: "Equipment Provider", icon: FiTool  },
+  { value: "driver",             label: "Driver",             image: driverTypeImg },
+  { value: "labour",             label: "Labour",             image: labourTypeImg  },
+  { value: "equipment_provider", label: "Equipment Provider", image: equipmentTypeImg  },
 ];
 
 const inputCls =
-  "w-full rounded-xl border border-green-200 bg-[#f8fbf5] px-4 py-3 text-sm text-[#1f3f28] placeholder:text-[#8aab90] outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition disabled:bg-gray-50 disabled:text-gray-400";
+  "w-full rounded-xl border border-[#c7dfb9] bg-white/85 px-4 py-3 text-sm text-[#1f3f28] placeholder:text-[#7d9b84] outline-none focus:border-[#F57C00] focus:ring-2 focus:ring-orange-100 transition shadow-[inset_0_1px_1px_rgba(255,255,255,0.6)] disabled:bg-gray-50 disabled:text-gray-400";
 
-const labelCls = "block text-xs font-semibold uppercase tracking-widest text-[#2d6a4f] mb-1.5";
+const labelCls = "block text-xs font-semibold uppercase tracking-widest text-[#255e3e] mb-1.5";
 
 function SectionCard({ title, icon: Icon, children }) {
   return (
-    <div className="rounded-3xl border border-green-200 bg-white shadow-sm p-6">
+    <div className="rounded-3xl border border-[#b7d8ae] bg-[linear-gradient(135deg,rgba(255,255,255,0.85)_0%,rgba(243,252,236,0.86)_50%,rgba(255,247,235,0.86)_100%)] shadow-[0_14px_34px_rgba(31,95,44,0.12)] backdrop-blur-sm p-6">
       <div className="flex items-center gap-2 mb-5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-green-50 border border-green-200">
-          <Icon className="text-green-700 text-sm" />
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#f0fbe8_0%,#fff1df_100%)] border border-[#cde6bf] shadow-sm">
+          <Icon className="text-[#2d6a4f] text-sm" />
         </span>
-        <h3 className="text-sm font-bold text-[#1f5f2c] uppercase tracking-widest">{title}</h3>
+        <h3 className="text-sm font-bold text-[#1e5a2d] uppercase tracking-widest">{title}</h3>
       </div>
       {children}
     </div>
@@ -67,6 +70,7 @@ function ListingDashboard() {
   const [form, setForm]       = useState(initialFormState);
   const [loading, setLoading] = useState(false);
   const [locLoading, setLocLoading] = useState(false);
+  const [imgUploading, setImgUploading] = useState(false);
   const [toast, setToast]     = useState(null); // { type: 'success'|'error', msg }
 
   const activeRole = form.providerRole || defaultProviderRole;
@@ -97,7 +101,6 @@ function ListingDashboard() {
           ...data,
           available: data.available ?? true,
           price: data.price ?? "",
-          vehicleDetails: { ...prev.vehicleDetails, ...data.vehicleDetails },
           meta: { ...prev.meta, ...data.meta },
         }))
       )
@@ -108,10 +111,33 @@ function ListingDashboard() {
   }, [id]);
 
   const set = (key, val) => setForm((prev) => ({ ...prev, [key]: val }));
-  const setVehicle = (key, val) =>
-    setForm((prev) => ({ ...prev, vehicleDetails: { ...prev.vehicleDetails, [key]: val } }));
   const setMeta = (key, val) =>
     setForm((prev) => ({ ...prev, meta: { ...prev.meta, [key]: val } }));
+
+  const handleEquipmentPhotoUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type?.startsWith("image/")) {
+      showToast("error", "Please upload a valid image file.");
+      return;
+    }
+
+    try {
+      setImgUploading(true);
+      const res = await uploadListingImage(file);
+      if (!res?.imageUrl) {
+        throw new Error("No image URL returned");
+      }
+      setMeta("image", res.imageUrl);
+      showToast("success", "Photo uploaded successfully.");
+    } catch (err) {
+      showToast("error", err.response?.data?.message || "Image upload failed.");
+    } finally {
+      setImgUploading(false);
+      event.target.value = "";
+    }
+  };
 
   const handleUseLocation = async () => {
     setLocLoading(true);
@@ -133,11 +159,8 @@ function ListingDashboard() {
     mobile: form.mobile.trim(),
     priceUnit: form.priceUnit,
     available: form.available,
-    vehicleDetails: {
-      ...form.vehicleDetails,
-      condition: form.vehicleDetails.condition || undefined,
-    },
     meta: form.meta,
+    locationName: form.location.locationName || "",
     location: {
       type: "Point",
       coordinates: [form.location.coordinates[0], form.location.coordinates[1]],
@@ -180,7 +203,7 @@ function ListingDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#F5F5DC_0%,#D9F99D_45%,#ffffff_100%)] px-4 py-10">
+    <div className="min-h-screen  px-4 py-10">
       {/* Toast */}
       {toast && (
         <div
@@ -198,7 +221,7 @@ function ListingDashboard() {
       <div className="max-w-3xl mx-auto space-y-5">
 
         {/* Page header */}
-        <div className="rounded-3xl border border-green-200 bg-white shadow-sm px-6 py-5 flex items-start justify-between gap-4 flex-wrap">
+        <div className="rounded-3xl border border-[#b7d8ae] bg-[linear-gradient(130deg,rgba(255,255,255,0.9)_0%,rgba(240,251,232,0.9)_42%,rgba(255,243,226,0.9)_100%)] shadow-[0_18px_40px_rgba(31,95,44,0.12)] px-6 py-5 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#F57C00] mb-1">
               {isEditMode ? "Edit Listing" : "New Listing"}
@@ -236,7 +259,7 @@ function ListingDashboard() {
             </div>
           )}
           <div className="grid grid-cols-3 gap-3">
-            {ROLE_OPTIONS.map(({ value, label, icon: Icon }) => {
+            {ROLE_OPTIONS.map(({ value, label, image }) => {
               const active = activeRole === value;
               return (
                 <button
@@ -246,13 +269,17 @@ function ListingDashboard() {
                   onClick={() => set("providerRole", value)}
                   className={`relative flex flex-col items-center gap-2 rounded-2xl border py-5 text-sm font-semibold transition ${
                     active
-                      ? "border-[#F57C00] bg-[#fff7ed] text-[#9a5200] shadow-sm"
-                      : "border-green-200 bg-[#f8fbf5] text-[#4e6f55] hover:border-green-300 hover:bg-green-50"
+                      ? "border-[#F57C00] bg-[linear-gradient(135deg,#fff8ec_0%,#ffefd9_100%)] text-[#9a5200] shadow-[0_10px_18px_rgba(245,124,0,0.2)]"
+                      : "border-[#c9e3bc] bg-[linear-gradient(135deg,#f9fff2_0%,#f2fbe9_100%)] text-[#4e6f55] hover:border-[#9fd08d] hover:shadow-sm"
                   } disabled:cursor-not-allowed ${
                     roleIsLocked && !active ? "opacity-30" : ""
                   }`}
                 >
-                  <Icon className={`text-xl ${active ? "text-[#F57C00]" : "text-green-600"}`} />
+                  <img
+                    src={image}
+                    alt={label}
+                    className={`h-10 w-10 object-contain transition ${active ? "opacity-100" : "opacity-80"}`}
+                  />
                   {label}
                   {active && roleIsLocked && (
                     <span className="absolute top-2 right-2">
@@ -353,7 +380,7 @@ function ListingDashboard() {
             </div>
           </div>
           {form.price && (
-            <div className="mt-4 rounded-xl border border-orange-200 bg-[#fff7ed] px-4 py-3">
+            <div className="mt-4 rounded-xl border border-orange-200 bg-[linear-gradient(120deg,#fff8ef_0%,#ffedd8_100%)] px-4 py-3 shadow-sm">
               <p className="text-xs text-[#8a5a22]">Rate Preview</p>
               <p className="text-lg font-bold text-[#c46800]">
                 ₹{Number(form.price).toLocaleString("en-IN")}
@@ -367,6 +394,17 @@ function ListingDashboard() {
         {isEquipment && (
           <SectionCard title="Equipment Details" icon={FiTool}>
             <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Offering Type</label>
+                <select
+                  className={inputCls}
+                  value={form.meta.listingType || "sell"}
+                  onChange={(e) => setMeta("listingType", e.target.value)}
+                >
+                  <option value="sell">Sell Item</option>
+                  <option value="rent">Rent Item</option>
+                </select>
+              </div>
               <div>
                 <label className={labelCls}>Brand</label>
                 <input
@@ -402,6 +440,25 @@ function ListingDashboard() {
                   value={form.meta.image}
                   onChange={(e) => setMeta("image", e.target.value)}
                 />
+                <div className="mt-2 flex items-center gap-2">
+                  <label
+                    htmlFor="equipment-photo-upload"
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#9fd08d] bg-[linear-gradient(120deg,#f1faea_0%,#e6f6dd_100%)] px-3 py-2 text-xs font-semibold text-[#1f5f2c] hover:brightness-95 transition"
+                  >
+                    {imgUploading ? <FiLoader className="animate-spin" /> : <FiCamera />}
+                    {imgUploading ? "Uploading..." : "Upload / Camera"}
+                  </label>
+                  <span className="text-xs text-gray-500">Upload directly from phone camera or gallery</span>
+                </div>
+                <input
+                  id="equipment-photo-upload"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleEquipmentPhotoUpload}
+                  disabled={imgUploading}
+                />
               </div>
             </div>
             {form.meta.image && (
@@ -417,45 +474,6 @@ function ListingDashboard() {
           </SectionCard>
         )}
 
-        {/* Vehicle details (driver / labour) */}
-        {!isEquipment && (
-          <SectionCard title="Vehicle Details" icon={FiTruck}>
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div>
-                <label className={labelCls}>Vehicle Model</label>
-                <input
-                  className={inputCls}
-                  placeholder="e.g. Tata Ace"
-                  value={form.vehicleDetails.model}
-                  onChange={(e) => setVehicle("model", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Registration No.</label>
-                <input
-                  className={inputCls}
-                  placeholder="e.g. MH12AB1234"
-                  value={form.vehicleDetails.regNumber}
-                  onChange={(e) => setVehicle("regNumber", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Condition</label>
-                <select
-                  className={inputCls}
-                  value={form.vehicleDetails.condition || ""}
-                  onChange={(e) => setVehicle("condition", e.target.value)}
-                >
-                  <option value="">Select condition</option>
-                  <option value="bad">Poor</option>
-                  <option value="good">Good</option>
-                  <option value="best">Excellent</option>
-                </select>
-              </div>
-            </div>
-          </SectionCard>
-        )}
-
         {/* Location */}
         <SectionCard title="Location" icon={FiMapPin}>
           <div className="flex items-center gap-4 flex-wrap">
@@ -463,7 +481,7 @@ function ListingDashboard() {
               type="button"
               onClick={handleUseLocation}
               disabled={locLoading}
-              className="inline-flex items-center gap-2 rounded-xl border border-green-300 bg-green-50 px-5 py-3 text-sm font-semibold text-[#1f5f2c] hover:bg-green-100 disabled:opacity-60 transition shadow-sm"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#9fd08d] bg-[linear-gradient(120deg,#f1faea_0%,#e6f6dd_100%)] px-5 py-3 text-sm font-semibold text-[#1f5f2c] hover:brightness-95 disabled:opacity-60 transition shadow-sm"
             >
               {locLoading
                 ? <><FiLoader className="animate-spin" /> Detecting...</>
@@ -472,10 +490,17 @@ function ListingDashboard() {
             {form.location?.coordinates ? (
               <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-[#f0faf3] px-4 py-2.5 text-sm text-green-700 font-medium">
                 <FiCheckCircle className="text-green-600 shrink-0" />
-                <span>
-                  GPS captured — {form.location.coordinates[1].toFixed(4)},&nbsp;
-                  {form.location.coordinates[0].toFixed(4)}
-                </span>
+                <div>
+                  <span>
+                    GPS captured — {form.location.coordinates[1].toFixed(4)},&nbsp;
+                    {form.location.coordinates[0].toFixed(4)}
+                  </span>
+                  {form.location.locationName && (
+                    <p className="text-xs font-semibold text-[#1f5f2c] mt-1">
+                      Area: {form.location.locationName}
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2 rounded-xl border border-orange-200 bg-[#fff7ed] px-4 py-2.5 text-sm text-[#9a5200] font-medium">
@@ -487,11 +512,11 @@ function ListingDashboard() {
         </SectionCard>
 
         {/* Action buttons */}
-        <div className="rounded-3xl border border-green-200 bg-white shadow-sm px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+        <div className="rounded-3xl border border-[#b7d8ae] bg-[linear-gradient(130deg,rgba(255,255,255,0.9)_0%,rgba(240,251,232,0.9)_45%,rgba(255,244,228,0.9)_100%)] shadow-[0_14px_32px_rgba(31,95,44,0.10)] px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="rounded-xl border border-green-200 bg-[#f8fbf5] px-6 py-3 text-sm font-semibold text-[#2d6a4f] hover:bg-green-100 transition"
+            className="rounded-xl border border-[#c9e3bc] bg-[linear-gradient(120deg,#f9fff2_0%,#f2fbe9_100%)] px-6 py-3 text-sm font-semibold text-[#2d6a4f] hover:brightness-95 transition"
           >
             Cancel
           </button>

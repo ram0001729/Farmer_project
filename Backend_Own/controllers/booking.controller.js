@@ -3,6 +3,10 @@ const Listing = require("../models/Listing.model");
 const Payment = require("../models/Payment.model");
 
 const mongoose = require("mongoose");
+const { getIO } = require("../utils/socket");
+
+const toIdString = (value) => (value ? value.toString() : "");
+const isSameId = (left, right) => toIdString(left) === toIdString(right);
 
 
 exports.createBooking = async (req, res) => {
@@ -64,6 +68,20 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+      // Emit real-time notification to the provider
+      try {
+        getIO().to(`user:${listing.ownerId.toString()}`).emit("new_booking", {
+          bookingId: booking._id,
+          farmerName: req.user.name || "A farmer",
+          listingTitle: listing.title || listing.providerRole,
+          paymentType,
+          price: listing.price,
+          createdAt: booking.createdAt,
+        });
+      } catch (_) {
+        // Socket may not be init in tests — safe to ignore
+      }
+
     res.status(201).json({
       success: true,
       bookingId: booking._id,
@@ -85,7 +103,7 @@ exports.confirmBooking = async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
 
     // Only provider can confirm the booking
-    if (booking.providerId.toString() !== req.user.userId)
+    if (!isSameId(booking.providerId, req.user.userId))
       return res.status(403).json({ error: "Not authorized" });
 
     if (booking.status !== "pending")
@@ -115,7 +133,7 @@ exports.startBooking = async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
 
     // Only provider can start the booking
-    if (booking.providerId.toString() !== req.user.userId)
+    if (!isSameId(booking.providerId, req.user.userId))
       return res.status(403).json({ error: "Not authorized" });
 
     if (booking.status !== "confirmed")
@@ -147,7 +165,7 @@ exports.completeBooking = async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
 
     // Only provider can mark completion
-    if (booking.providerId.toString() !== req.user.userId)
+    if (!isSameId(booking.providerId, req.user.userId))
       return res.status(403).json({ error: "Not authorized" });
 
     if (booking.status !== "started")
@@ -180,17 +198,14 @@ exports.cancelBooking = async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
 
     // Only the farmer or provider can cancel
-    if (
-      booking.farmerId.toString() !== req.user.userId &&
-      booking.providerId.toString() !== req.user.userId
-    ) {
+    if (!isSameId(booking.farmerId, req.user.userId) && !isSameId(booking.providerId, req.user.userId)) {
       return res.status(403).json({ error: "Not authorized" });
     }
 
     if (booking.status === "completed")
       return res.status(400).json({ error: "Cannot cancel completed booking" });
 
-    const isFarmerCancelling = booking.farmerId.toString() === req.user.userId;
+    const isFarmerCancelling = isSameId(booking.farmerId, req.user.userId);
     if (isFarmerCancelling && booking.providerRole === "driver") {
       const bookingAgeMs = Date.now() - new Date(booking.createdAt).getTime();
       if (bookingAgeMs > DRIVER_CANCEL_WINDOW_MS) {
@@ -234,7 +249,7 @@ exports.getBookingById = async (req, res) => {
     if (!booking)
       return res.status(404).json({ error: "Booking not found" });
 
-    if (booking.farmerId.toString() !== req.user.userId)
+    if (!isSameId(booking.farmerId, req.user.userId))
       return res.status(403).json({ error: "Not authorized" });
 
     res.json({ success: true, booking });
@@ -253,7 +268,7 @@ exports.getMyBookings = async (req, res) => {
       farmerId: req.user.userId,
     })
       .populate("providerId", "name mobile role")
-      .populate("listingId")
+      .populate("listingId", "title mobile providerRole experience price priceUnit available rating location locationName")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, bookings });
@@ -273,23 +288,14 @@ exports.getMyBookings = async (req, res) => {
 // GET /api/bookings/provider
 exports.getProviderBookings = async (req, res) => {
   try {
-    // Only show bookings for listings that are still marked available.
-    // If the listing is no longer available, the provider should not see the request.
     const bookings = await Booking.find({
       providerId: req.user.userId,
     })
-      .populate("farmerId", "name mobile")
-      .populate({
-        path: "listingId",
-        match: { available: true },
-        select: "title providerRole available",
-      })
+      .populate("farmerId", "name mobile email")
+      .populate("listingId", "title providerRole available price")
       .sort({ createdAt: -1 });
 
-    // Remove any bookings where the listing is no longer available (populate returned null)
-    const filtered = bookings.filter((b) => b.listingId);
-
-    res.json({ success: true, bookings: filtered });
+    res.json({ success: true, bookings });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch bookings" });
   }

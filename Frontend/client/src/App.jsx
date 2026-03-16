@@ -24,6 +24,7 @@ import MyListings from "./pages/MyListings";
 import ProviderPaymentDashboard from "./components/Provider/ProviderPaymentDashboard";
 import ProviderBookings from "./components/Provider/ProviderBookings";
 import FarmerCard from "./components/Provider/FarmerCard";
+import WomenEmpowermentSchemes from "./components/labour/WomenEmpowermentSchemes";
 
 import ListingDashboard from "./components/Provider/ListingDashboard";
 
@@ -52,6 +53,7 @@ function App() {
 
 <Route path="/ProviderPaymentDashboard" element={<ProviderPaymentDashboard />} />
 <Route path="/provider-bookings" element={<ProviderBookings />} />
+<Route path="/labour-women-schemes" element={<WomenEmpowermentSchemes />} />
 
 <Route path="/listing/edit/:id" element={<ListingDashboard />} />
 

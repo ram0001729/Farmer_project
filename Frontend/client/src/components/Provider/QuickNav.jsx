@@ -1,5 +1,8 @@
 import { FiBell, FiCheckCircle, FiDollarSign, FiPower } from "react-icons/fi";
 
+const glassCls =
+  "backdrop-blur-xl bg-white/25 border border-white/45 ring-1 ring-white/30 shadow-[0_10px_24px_rgba(16,24,40,0.08)]";
+
 function QuickNav({
   newBookings = 0,
   pendingRequests = 0,
@@ -16,36 +19,36 @@ function QuickNav({
       <button
         type="button"
         onClick={onNewBookingClick}
-        className="w-full bg-white border rounded-xl shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        className={`w-full rounded-2xl p-4 flex items-center gap-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(245,124,0,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F57C00] ${glassCls}`}
       >
-        <div className="p-3 rounded-full bg-orange-50">
-          <FiBell className="text-orange-500 text-2xl" />
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#F57C00] to-[#e65100] shadow-md shadow-orange-400/30">
+          <FiBell className="text-white text-xl" />
         </div>
         <div className="text-left">
-          <p className="text-sm text-gray-500">New Booking</p>
-          <p className="text-xl font-semibold">{newBookings}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#3b5f41]">New Booking</p>
+          <p className="text-2xl font-extrabold text-[#173A1E]">{newBookings}</p>
         </div>
       </button>
 
       {/* Total Earnings */}
-      <div className="bg-white border rounded-xl shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition">
-        <div className="p-3 rounded-full bg-green-50">
-          <FiDollarSign className="text-green-600 text-2xl" />
+      <div className={`rounded-2xl p-4 flex items-center gap-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(31,95,44,0.15)] ${glassCls}`}>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#1f5f2c] to-[#2e7d3e] shadow-md shadow-[#1f5f2c]/30">
+          <FiDollarSign className="text-white text-xl" />
         </div>
         <div>
-          <p className="text-sm text-gray-500">Total Earnings</p>
-          <p className="text-xl font-semibold">₹{earnings.toLocaleString()}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#3b5f41]">Total Earnings</p>
+          <p className="text-2xl font-extrabold text-[#173A1E]">₹{earnings.toLocaleString()}</p>
         </div>
       </div>
 
       {/* Pending Requests */}
-      <div className="bg-white border rounded-xl shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition">
-        <div className="p-3 rounded-full bg-blue-50">
-          <FiCheckCircle className="text-blue-500 text-2xl" />
+      <div className={`rounded-2xl p-4 flex items-center gap-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_36px_rgba(31,95,44,0.12)] ${glassCls}`}>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0284c7] to-[#0369a1] shadow-md shadow-sky-500/25">
+          <FiCheckCircle className="text-white text-xl" />
         </div>
         <div>
-          <p className="text-sm text-gray-500">Pending Requests</p>
-          <p className="text-xl font-semibold">{pendingRequests}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#3b5f41]">Pending Requests</p>
+          <p className="text-2xl font-extrabold text-[#173A1E]">{pendingRequests}</p>
         </div>
       </div>
 
@@ -53,25 +56,32 @@ function QuickNav({
       {showAvailability && (
         <button
           onClick={onToggleAvailability}
-          className={`flex items-center justify-between w-full rounded-xl px-4 py-4 shadow border transition-all duration-300 focus:outline-none
-            ${available ? "bg-green-100 border-green-300" : "bg-red-100 border-red-300"}`}
+          className={`flex items-center justify-between w-full rounded-2xl px-4 py-4 transition-all duration-300 hover:-translate-y-1 focus:outline-none ${glassCls} ${
+            available
+              ? "hover:shadow-[0_16px_36px_rgba(31,95,44,0.15)]"
+              : "hover:shadow-[0_16px_36px_rgba(220,38,38,0.12)]"
+          }`}
         >
           <div className="flex items-center gap-3">
-            <FiPower
-              className={`text-xl ${available ? "text-green-600" : "text-red-600"}`}
-            />
+            <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-md ${
+              available
+                ? "bg-gradient-to-br from-[#1f5f2c] to-[#2e7d3e] shadow-[#1f5f2c]/30"
+                : "bg-gradient-to-br from-rose-500 to-rose-700 shadow-rose-500/25"
+            }`}>
+              <FiPower className="text-white text-xl" />
+            </div>
             <div>
-              <p className="text-sm font-semibold">
+              <p className="text-sm font-extrabold text-[#173A1E]">
                 {available ? "Available" : "Unavailable"}
               </p>
-              <p className="text-xs text-gray-500">
-                {available ? "Accepting new requests" : "Not accepting new requests"}
+              <p className="text-xs text-[#4a7a55]">
+                {available ? "Accepting new requests" : "Not accepting requests"}
               </p>
             </div>
           </div>
           <div
             className={`h-5 w-10 rounded-full transition-all ${
-              available ? "bg-green-500" : "bg-red-500"
+              available ? "bg-[#1f5f2c]" : "bg-rose-500"
             }`}
           />
         </button>

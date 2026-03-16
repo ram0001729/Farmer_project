@@ -43,7 +43,7 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_center,#F5F5DC_0%,#D9F99D_50%,#C4E07A_100%)] from-green-50 to-white px-4">
+    <div className="min-h-screen flex items-center justify-center  from-green-50 to-white px-4">
       
       <form
         onSubmit={handleSubmit}

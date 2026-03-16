@@ -10,6 +10,7 @@ import {
   FiBookOpen,
   FiShoppingBag,
   FiPlusCircle,
+  FiHeart,
   FiLogOut,
 } from "react-icons/fi";
 
@@ -35,13 +36,31 @@ function SidebarLink({ to, children, icon, isOpen }) {
   );
 }
 
-function Sidebar({ isOpen, toggleSidebar }) {
+function SidebarAction({ onClick, children, icon, isOpen }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={!isOpen ? children : ""}
+      className={`flex items-center w-full ${
+        isOpen ? "gap-3 px-4 justify-start" : "justify-center"
+      } py-3 rounded-xl transition-all text-white/80 hover:bg-[#F57C00] hover:text-white`}
+    >
+      <span className="text-lg">{icon}</span>
+      {isOpen && <span>{children}</span>}
+    </button>
+  );
+}
+
+
+function Sidebar({ isOpen, toggleSidebar, onLogout }) {
   const { role, logout } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
 
   const handleLogout = () => {
     logout();
+    if (onLogout) onLogout();
     navigate("/login");
   };
 
@@ -58,7 +77,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
       {/* Sidebar */}
 
 <aside
-  className={`relative mt-16 h-screen bg-[#427A43] text-white flex flex-col rounded-md transition-all duration-500 ${
+  className={`relative mt-16 h-screen bg-[#3FA21A]/80 text-white flex flex-col rounded-md transition-all duration-500 ${
     isOpen ? "w-56" : "w-10"
   }`}
 >
@@ -67,17 +86,17 @@ function Sidebar({ isOpen, toggleSidebar }) {
   className="absolute top-3 -right-1 bg-green p-2 rounded-lg  flex flex-col justify-center items-center w-10 h-10"
 >
   <span
-    className={`block h-0.5 w-6 bg-black transition-all duration-300
+    className={`block h-0.5 w-6 bg-white transition-all duration-300
     ${isOpen ? "rotate-45 translate-y-1.5" : ""}`}
   ></span>
 
   <span
-    className={`block h-0.5 w-6 bg-black my-1 transition-all duration-300
+    className={`block h-0.5 w-6 bg-white my-1 transition-all duration-300
     ${isOpen ? "opacity-0" : ""}`}
   ></span>
 
   <span
-    className={`block h-0.5 w-6 bg-black transition-all duration-300
+    className={`block h-0.5 w-6 bg-white transition-all duration-300
     ${isOpen ? "-rotate-45 -translate-y-1.5" : ""}`}
   ></span>
 </button>
@@ -122,6 +141,9 @@ function Sidebar({ isOpen, toggleSidebar }) {
             <SidebarLink to="/Profile" icon={<FiUser />}isOpen={isOpen}>
               {t("Profile")}
             </SidebarLink>
+            <SidebarAction onClick={handleLogout} icon={<FiLogOut />} isOpen={isOpen}>
+              {t("Logout")}
+            </SidebarAction>
           </>
         )}
 
@@ -136,29 +158,30 @@ function Sidebar({ isOpen, toggleSidebar }) {
             <SidebarLink to="/MyListingsPage" icon={<FiPlusCircle />}isOpen={isOpen}>
               {t(listingsLabel)}
             </SidebarLink>
-            <SidebarLink to="/provider-bookings" icon={<FiCalendar />} isOpen={isOpen}>
-              {t("My Bookings")}
-            </SidebarLink>
+            {role !== "driver" && (
+              <SidebarLink to="/provider-bookings" icon={<FiCalendar />} isOpen={isOpen}>
+                {t("My Bookings")}
+              </SidebarLink>
+            )}
             <SidebarLink to="/ProviderPaymentDashboard" icon={<FiCreditCard />}isOpen={isOpen}>
               {t("Payments & Earnings")}
             </SidebarLink>
+            {role === "labour" && (
+              <SidebarLink to="/labour-women-schemes" icon={<FiHeart />} isOpen={isOpen}>
+                {t("Women Schemes")}
+              </SidebarLink>
+            )}
             <SidebarLink to="/Profile" icon={<FiUser />} isOpen={isOpen}>
               {t("Profile")}
             </SidebarLink>
+            <SidebarAction onClick={handleLogout} icon={<FiLogOut />} isOpen={isOpen}>
+              {t("Logout")}
+            </SidebarAction>
   
           </>
 
         )}
   </div>
-
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          className="mt-auto flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-white/80 hover:bg-[#F57C00] hover:text-white transition-all duration-200"
-        >
-          <FiLogOut className="text-lg" />
-          {isOpen && <span>{t("Logout")}</span>}
-        </button>
       </aside>
     </>
   );

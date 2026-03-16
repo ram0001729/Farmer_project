@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { FiCheckCircle, FiCircle, FiMapPin, FiTruck } from "react-icons/fi";
-import { getSingleListing } from "@/services/listingService";
+import { getLocationNameFromCoordinates } from "@/services/locationservice";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -43,16 +43,21 @@ function interpolateCoords(start, end, progress) {
   ];
 }
 
-function formatCoords(coords) {
-  if (!coords || coords.length !== 2) return "--";
-  const [lng, lat] = coords;
-  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+function resolveAreaName(area) {
+  if (!area) return "";
+  if (typeof area === "string") return area;
+  return area.label || area.value || "";
 }
 
 // [lng, lat] -> [lat, lng] for Leaflet
 function toLatLng(coords) {
   if (!coords || coords.length !== 2) return null;
   return [coords[1], coords[0]];
+}
+
+function formatCoordinateLabel(coords) {
+  if (!coords || coords.length !== 2) return "";
+  return `${coords[1].toFixed(4)}, ${coords[0].toFixed(4)}`;
 }
 
 // Rapido-style truck icon for driver (moves when location updates)
@@ -104,11 +109,79 @@ function FitBounds({ driverPos, destinationPos }) {
 function DriverTracking({ booking, listingId }) {
   const listingIdToFetch = booking?.listingId?._id || listingId;
   const destination = booking?.location?.coordinates;
+  const driverLocation = booking?.listingId?.location?.coordinates || null;
+  const [resolvedDriverAreaName, setResolvedDriverAreaName] = useState("");
+  const [resolvedDestinationAreaName, setResolvedDestinationAreaName] = useState("");
+  const driverAreaName =
+    resolveAreaName(booking?.listingId?.area) ||
+    booking?.listingId?.locationName ||
+    resolvedDriverAreaName ||
+    formatCoordinateLabel(driverLocation) ||
+    "Driver current area";
+  const destinationAreaName =
+    resolveAreaName(booking?.area) ||
+    booking?.destinationName ||
+    booking?.locationName ||
+    resolvedDestinationAreaName ||
+    formatCoordinateLabel(destination) ||
+    "Your farm area";
 
-  const [driverLocation, setDriverLocation] = useState(null);
   const [routeStartLocation, setRouteStartLocation] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
-  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDriverArea = async () => {
+      if (resolveAreaName(booking?.listingId?.area) || booking?.listingId?.locationName) {
+        setResolvedDriverAreaName("");
+        return;
+      }
+
+      if (!Array.isArray(driverLocation) || driverLocation.length !== 2) {
+        setResolvedDriverAreaName("");
+        return;
+      }
+
+      const locationName = await getLocationNameFromCoordinates(driverLocation[1], driverLocation[0]);
+      if (isMounted) {
+        setResolvedDriverAreaName(locationName);
+      }
+    };
+
+    loadDriverArea();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [booking?.listingId?.area, booking?.listingId?.locationName, driverLocation]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDestinationArea = async () => {
+      if (resolveAreaName(booking?.area) || booking?.destinationName || booking?.locationName) {
+        setResolvedDestinationAreaName("");
+        return;
+      }
+
+      if (!Array.isArray(destination) || destination.length !== 2) {
+        setResolvedDestinationAreaName("");
+        return;
+      }
+
+      const locationName = await getLocationNameFromCoordinates(destination[1], destination[0]);
+      if (isMounted) {
+        setResolvedDestinationAreaName(locationName);
+      }
+    };
+
+    loadDestinationArea();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [booking?.area, booking?.destinationName, booking?.locationName, destination]);
 
   // Keep time flowing so simulated progress updates even when GPS updates are slow.
   useEffect(() => {
@@ -120,9 +193,7 @@ function DriverTracking({ booking, listingId }) {
   }, []);
 
   useEffect(() => {
-    setDriverLocation(null);
     setRouteStartLocation(null);
-    setError(null);
   }, [listingIdToFetch, booking?._id]);
 
   useEffect(() => {
@@ -182,16 +253,13 @@ function DriverTracking({ booking, listingId }) {
 
   const stage = useMemo(() => {
     const confirmed = !!booking;
-    const started =
-      booking?.status === "started" ||
-      booking?.status === "completed" ||
-      effectiveProgress >= 0.08;
+    const started = booking?.status === "started" || booking?.status === "completed";
     const onTheWay = started && effectiveProgress >= 0.2;
-    const arrivingSoon = effectiveProgress >= 0.5 || (driverDistanceKm !== null && driverDistanceKm <= 1);
+    const arrivingSoon =
+      started && (effectiveProgress >= 0.6 || (driverDistanceKm !== null && driverDistanceKm <= 1));
     const reached =
       booking?.status === "completed" ||
-      effectiveProgress >= 0.98 ||
-      (driverDistanceKm !== null && driverDistanceKm <= 0.1);
+      (started && (effectiveProgress >= 0.98 || (driverDistanceKm !== null && driverDistanceKm <= 0.1)));
 
     return {
       confirmed,
@@ -252,42 +320,15 @@ function DriverTracking({ booking, listingId }) {
     },
   ];
 
+  const timelineProgress = useMemo(() => {
+    if (!booking) return 0;
+    if (stage.reached) return 1;
+    if (!stage.started) return 0.06;
+    return clamp(0.25 + effectiveProgress * 0.75, 0.06, 0.98);
+  }, [booking, stage.reached, stage.started, effectiveProgress]);
 
-
-
-
-
-
-
-
-
-  useEffect(() => {
-    if (!listingIdToFetch) return;
-
-    let isMounted = true;
-
-    const fetchLocation = async () => {
-      try {
-        const listing = await getSingleListing(listingIdToFetch);
-        const coords = listing?.location?.coordinates;
-        if (isMounted && coords) {
-          setDriverLocation(coords);
-          setError(null);
-        }
-      } catch (err) {
-        console.error("Failed to fetch driver location", err);
-        setError("Unable to fetch tracking info");
-      }
-    };
-
-    fetchLocation();
-    const interval = setInterval(fetchLocation, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [listingIdToFetch]);
+  const timelineMarkerTop = `${Math.max(6, Math.min(98, timelineProgress * 100))}%`;
+  const timelineFillHeight = `${Math.max(6, Math.min(100, timelineProgress * 100))}%`;
 
   const handleOpenLiveMap = () => {
     if (!driverLocation || !destination) return;
@@ -361,20 +402,35 @@ function DriverTracking({ booking, listingId }) {
           </p>
         )}
 
-        {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
+        {!driverLocation && <p className="text-sm text-amber-600 mb-4">Waiting for provider location...</p>}
 
         <div className="rounded-xl bg-gray-50 p-3 mb-4 border border-gray-100">
           <p className="text-xs text-gray-500">Driver</p>
-          <p className="text-sm font-medium text-gray-700">{formatCoords(renderedDriverLocation || driverLocation)}</p>
+          <p className="text-sm font-bold text-gray-800">{driverAreaName || "Driver current area"}</p>
           <p className="text-xs text-gray-500 mt-1">Destination</p>
-          <p className="text-sm font-medium text-gray-700">{formatCoords(destination)}</p>
+          <p className="text-sm font-bold text-gray-800">{destinationAreaName}</p>
         </div>
 
         {/* Step timeline */}
-        <div className="relative pl-6 border-l-2 border-green-200 ml-1 space-y-3">
+        <div className="relative ml-1 pl-8">
+          <div className="absolute left-[7px] top-1 bottom-1 w-[2px] rounded-full bg-green-100" />
+          <div
+            className="absolute left-[7px] top-1 w-[2px] rounded-full bg-gradient-to-b from-emerald-400 to-green-500 transition-all duration-1000 ease-out"
+            style={{ height: timelineFillHeight }}
+          />
+          <div
+            className="absolute left-[7px] z-20 -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 ease-out"
+            style={{ top: timelineMarkerTop }}
+          >
+            <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-white shadow-lg shadow-emerald-500/30">
+              <FiTruck className="text-sm" />
+            </div>
+          </div>
+
+          <div className="space-y-4">
           {steps.map((step, index) => (
-            <div key={index} className="relative flex items-start gap-3">
-              <div className="absolute -left-[29px] top-0.5 z-10">
+            <div key={index} className="relative flex min-h-[3.2rem] items-start gap-3">
+              <div className="absolute -left-[31px] top-0.5 z-10 bg-white rounded-full">
                 {step.done ? (
                   <FiCheckCircle className="text-green-600 text-lg bg-white rounded-full" />
                 ) : index === steps.length - 1 ? (
@@ -389,6 +445,7 @@ function DriverTracking({ booking, listingId }) {
               </div>
             </div>
           ))}
+          </div>
         </div>
 
         <div className="mt-5 flex justify-between items-center gap-3">
@@ -399,11 +456,11 @@ function DriverTracking({ booking, listingId }) {
           >
             Open in Google Maps
           </button>
-          <p className="text-xs text-gray-500 shrink-0">Live location updates every 5s</p>
+          <p className="text-xs text-gray-500 shrink-0">Tracking refreshes automatically</p>
         </div>
       </div>
     </div>
   );
 }
 
-export default DriverTracking;
+export default memo(DriverTracking);

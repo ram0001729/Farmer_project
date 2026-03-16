@@ -29,6 +29,11 @@ export const getMyMarketOrders = async () => {
   return res.data;
 };
 
+export const getProviderMarketOrders = async () => {
+  const res = await api.get("/market/orders/provider");
+  return res.data;
+};
+
 export const getProviderAnalytics = async () => {
   const res = await api.get("/market/provider/analytics");
   return res.data;

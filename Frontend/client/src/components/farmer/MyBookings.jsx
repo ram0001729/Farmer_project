@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getMyBookings } from "@/services/bookingService";
 import LabourCard from "@/components/farmer/LabourCard";
 import { cancelBooking } from "@/services/bookingService";
-import { FiActivity } from "react-icons/fi";
+import { FiCalendar, FiClock, FiCheckCircle, FiWifi, FiBriefcase, FiZap, FiLayers } from "react-icons/fi";
 import DriverTracking from "@/components/common/DriverTracking";
 import { useTranslation } from "react-i18next";
 
@@ -12,10 +12,9 @@ function formatDuration(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
 
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  return `${minutes}m ${seconds}s`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function MyBookings() {
@@ -27,7 +26,7 @@ function MyBookings() {
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now());
-    }, 1000);
+    }, 30000);
 
     return () => clearInterval(timer);
   }, []);
@@ -35,11 +34,8 @@ function MyBookings() {
   useEffect(() => {
     const fetchBookings = async () => {
       try {
-       const bookingsData = await getMyBookings();
-       console.log(bookingsData);
-
-setBookings(bookingsData);
-
+        const bookingsData = await getMyBookings();
+        setBookings(bookingsData);
       } catch (err) {
         console.error(err);
       }
@@ -48,143 +44,184 @@ setBookings(bookingsData);
     fetchBookings();
   }, []);
 
-const handleCancel = async (booking) => {
-  try {
-    const createdTs = new Date(booking.createdAt).getTime();
-    const isDriverBooking = booking?.providerRole === "driver" || booking?.listingId?.providerRole === "driver";
-    const isWindowExpired = isDriverBooking && Date.now() - createdTs > DRIVER_CANCEL_WINDOW_MS;
+  const hasActiveTracking = bookings.some(
+    (booking) => booking.status === "confirmed" || booking.status === "started"
+  );
 
-    if (isWindowExpired) {
-      alert(t("Farmer can cancel driver booking only within 9 hours."));
-      return;
+  useEffect(() => {
+    if (!hasActiveTracking) return undefined;
+
+    const interval = setInterval(async () => {
+      try {
+        const bookingsData = await getMyBookings();
+        setBookings(bookingsData);
+      } catch (err) {
+        console.error(err);
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [hasActiveTracking]);
+
+  const handleCancel = async (booking) => {
+    try {
+      const createdTs = new Date(booking.createdAt).getTime();
+      const isDriverBooking = booking?.providerRole === "driver" || booking?.listingId?.providerRole === "driver";
+      const isWindowExpired = isDriverBooking && Date.now() - createdTs > DRIVER_CANCEL_WINDOW_MS;
+
+      if (isWindowExpired) {
+        alert(t("Farmer can cancel driver booking only within 9 hours."));
+        return;
+      }
+
+      await cancelBooking(booking._id);
+      setBookings((prev) => prev.filter((b) => b._id !== booking._id));
+    } catch (err) {
+      alert(err.response?.data?.error || t("Failed to cancel booking"));
     }
+  };
 
-    await cancelBooking(booking._id);
+  const totalBookings = bookings.length;
+  const activeBookings = bookings.filter((b) => b.status === "confirmed" || b.status === "started").length;
+  const completedBookings = bookings.filter((b) => b.status === "completed").length;
+  const onlineBookings = bookings.filter((b) => b.paymentType === "online").length;
+  const offlineBookings = bookings.filter((b) => b.paymentType === "offline").length;
 
-    // Remove booking from UI completely
-    setBookings((prev) =>
-      prev.filter((b) => b._id !== booking._id)
-    );
+  const filteredBookings = bookings.filter((b) => {
+    if (filter === "all") return true;
+    if (filter === "active") return b.status === "confirmed" || b.status === "started";
+    if (filter === "completed") return b.status === "completed";
+    return true;
+  });
 
-  } catch (err) {
-    alert(err.response?.data?.error || t("Failed to cancel booking"));
-  }
-};
-const totalBookings = bookings.length;
+  const visibleBookings = filteredBookings.filter((b) => b.listingId);
 
-const activeBookings = bookings.filter(
-  (b) => b.status === "confirmed" || b.status === "started"
-).length;
+  const metricCards = [
+    {
+      key: "all",
+      title: t("Total"),
+      value: totalBookings,
+      icon: FiLayers,
+      iconBg: "bg-slate-700",
+      activeClass: "from-slate-100 to-slate-200 border-slate-300 ring-slate-200",
+      idleClass: "from-slate-50 to-slate-100 border-slate-200",
+      textClass: "text-slate-700",
+      clickable: true,
+    },
+    {
+      key: "active",
+      title: t("Active Bookings"),
+      value: activeBookings,
+      icon: FiZap,
+      iconBg: "bg-emerald-500",
+      activeClass: "from-emerald-100 to-teal-100 border-emerald-300 ring-emerald-200",
+      idleClass: "from-emerald-50 to-teal-50 border-emerald-200",
+      textClass: "text-emerald-700",
+      clickable: true,
+    },
+    {
+      key: "completed",
+      title: t("Completed Bookings"),
+      value: completedBookings,
+      icon: FiCheckCircle,
+      iconBg: "bg-indigo-500",
+      activeClass: "from-indigo-100 to-blue-100 border-indigo-300 ring-indigo-200",
+      idleClass: "from-indigo-50 to-blue-50 border-indigo-200",
+      textClass: "text-indigo-700",
+      clickable: true,
+    },
+    {
+      key: "online",
+      title: t("Online Payment"),
+      value: onlineBookings,
+      icon: FiWifi,
+      iconBg: "bg-violet-500",
+      activeClass: "from-violet-100 to-fuchsia-100 border-violet-300 ring-violet-200",
+      idleClass: "from-violet-50 to-fuchsia-50 border-violet-200",
+      textClass: "text-violet-700",
+      clickable: false,
+    },
+    {
+      key: "offline",
+      title: t("Offline Payment"),
+      value: offlineBookings,
+      icon: FiBriefcase,
+      iconBg: "bg-amber-500",
+      activeClass: "from-amber-100 to-orange-100 border-amber-300 ring-amber-200",
+      idleClass: "from-amber-50 to-orange-50 border-amber-200",
+      textClass: "text-amber-700",
+      clickable: false,
+    },
+  ];
 
-const completedBookings = bookings.filter(
-  (b) => b.status === "completed"
-).length;
-
-const onlineBookings = bookings.filter(
-  (b) => b.paymentType === "online"
-).length;
-
-const offlineBookings = bookings.filter(
-  (b) => b.paymentType === "offline"
-).length;
-
-const filteredBookings = bookings.filter((b) => {
-  if (filter === "all") return true;
-  if (filter === "active") return b.status === "confirmed" || b.status === "started";
-  if (filter === "completed") return b.status === "completed";
-  return true;
-});
   return (
-    <div className=" p-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#efe4bb_0%,#e7dbad_42%,#e4d6a4_100%)] px-4 py-8 md:px-8">
+      <div className="mx-auto max-w-7xl space-y-7">
+        <section className="rounded-3xl border border-white/45 bg-white/35 p-6 shadow-[0_10px_30px_rgba(90,70,20,0.10)] backdrop-blur-xl ring-1 ring-white/30">
+          <h1 className="text-3xl font-bold text-emerald-800">{t("My Bookings")}</h1>
+          <p className="mt-1 text-sm text-slate-600">{t("Overview of all your service bookings")}</p>
+        </section>
 
-<div className="min-h-screen ">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {metricCards.map((card) => {
+            const Icon = card.icon;
+            const isSelected = card.clickable && filter === card.key;
+            const classSet = isSelected ? card.activeClass : card.idleClass;
 
-  <div className="mb-8">
-    <h1 className="text-3xl font-bold text-green-700">
-      {t("My Bookings")}
-    </h1>
+            const commonClass = `min-h-[118px] rounded-2xl border bg-gradient-to-br ${classSet} p-5 text-left shadow-[0_8px_24px_rgba(56,48,18,0.10)] transition-all duration-300 flex flex-col justify-between backdrop-blur-md ring-1 ring-white/30`;
 
-    <p className="text-gray-600 mt-1">
-      {t("Overview of all your service bookings")}
-    </p>
-  </div>
+            const cardContent = (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${card.textClass}`}>{card.title}</p>
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${card.iconBg} shadow-md`}>
+                    <Icon className="text-white text-base" />
+                  </span>
+                </div>
+                <p className={`text-3xl font-bold leading-none ${card.textClass}`}>{card.value}</p>
+              </>
+            );
 
+            if (card.clickable) {
+              return (
+                <button
+                  key={card.key}
+                  type="button"
+                  onClick={() => setFilter(card.key)}
+                  className={`${commonClass} ${!isSelected ? "hover:shadow-md" : "ring-2"}`}
+                >
+                  {cardContent}
+                </button>
+              );
+            }
 
-<div className="grid grid-cols-2 md:grid-cols-5 gap-6 mb-8">
+            return (
+              <div key={card.key} className={commonClass}>
+                {cardContent}
+              </div>
+            );
+          })}
+        </section>
 
-  <button
-    type="button"
-    onClick={() => setFilter("all")}
-    className={`text-left p-4 rounded-xl shadow transition ${
-      filter === "all"
-        ? "bg-green-50 border border-green-200"
-        : "bg-white border border-gray-200 hover:shadow-lg"
-    }`}
-  >
-    <p className="text-sm text-black-500">{t("Total")}</p>
-    <p className="text-xl font-bold">{totalBookings}</p>
-  </button>
+        <section className="rounded-3xl border border-white/45 bg-white/40 p-5 shadow-[0_14px_36px_rgba(74,58,24,0.12)] backdrop-blur-xl ring-1 ring-white/35 md:p-6">
+          <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800">{t("Your Bookings")}</h2>
+              <p className="mt-1 text-sm text-slate-600">{t("Manage and track your scheduled services")}</p>
+            </div>
+            <span className="rounded-full border border-white/50 bg-white/50 px-3 py-1 text-xs font-semibold text-slate-700 backdrop-blur-md">
+              {t("Showing")}: {visibleBookings.length}
+            </span>
+          </div>
 
-  <button
-    type="button"
-    onClick={() => setFilter("active")}
-    className={`text-left rounded-2xl p-5 shadow-md transition ${
-      filter === "active"
-        ? "bg-green-50 border border-green-200"
-        : "bg-white border border-gray-100 hover:shadow-lg"
-    }`}
-  >
-    <p className="text-sm text-gray-500">{t("Active Bookings")}</p>
-
-    <p className="text-3xl font-bold text-green-600 mt-1">
-      {activeBookings}
-    </p>
-  </button>
-
-  <button
-    type="button"
-    onClick={() => setFilter("completed")}
-    className={`text-left rounded-2xl p-5 shadow-md transition ${
-      filter === "completed"
-        ? "bg-green-50 border border-green-200"
-        : "bg-white border border-gray-100 hover:shadow-lg"
-    }`}
-  >
-    <p className="text-sm text-gray-500">{t("Completed Bookings")}</p>
-
-    <p className="text-3xl font-bold text-green-600 mt-1">
-      {completedBookings}
-    </p>
-  </button>
-
-  <div className="bg-white p-4 rounded-xl shadow">
-    <p className="text-sm text-black-500">{t("Online Payment")}</p>
-    <p className="text-xl font-bold text-purple-600">
-      {onlineBookings}
-    </p>
-  </div>
-
-  <div className="bg-white p-4 rounded-xl shadow">
-    <p className="text-sm text-black-500">{t("Offline Payment")}</p>
-    <p className="text-xl font-bold text-orange-600">
-      {offlineBookings}
-    </p>
-  </div>
-
-</div>
-  <div className="max-w-7xl mx-auto px-4 py-8">
-<div className="mb-8">
-        <h1 className="text-3xl font-bold text-green-700">
-         {t("Your Bookings")}
-        </h1>
-        <p className="text-gray-600 mt-1">
-          {t("Manage and track your scheduled services")}
-        </p>
-      </div>
-<div className="flex flex-col gap-6">    
-  {filteredBookings
-    .filter((b) => b.listingId)
-    .map((booking) => {
+          {visibleBookings.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/50 bg-white/35 px-6 py-12 text-center backdrop-blur-md">
+              <p className="text-base font-semibold text-slate-700">{t("No bookings found for this filter.")}</p>
+              <p className="mt-1 text-sm text-slate-500">{t("Try switching filter to view other bookings.")}</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {visibleBookings.map((booking) => {
       const createdTs = new Date(booking.createdAt).getTime();
       const startTs = new Date(booking.startAt).getTime();
       const endTs = new Date(booking.endAt).getTime();
@@ -193,89 +230,99 @@ const filteredBookings = bookings.filter((b) => {
       const isUpcoming = now < startTs;
       const isOngoing = now >= startTs && now <= endTs;
       const isEnded = now > endTs;
+      const bookingStateLabel = isEnded ? t("Completed") : isOngoing ? t("Ongoing") : t("Upcoming");
+      const bookingStateClass = isEnded
+        ? "bg-gray-100 text-gray-700 border-gray-200"
+        : isOngoing
+          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+          : "bg-blue-50 text-blue-700 border-blue-200";
 
       return (
-      <div
-        key={booking._id}
-  className="flex  bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition overflow-hidden"
-      >
+        <article
+          key={booking._id}
+          className="grid gap-5 rounded-2xl border border-white/45 bg-white/45 p-4 shadow-[0_12px_32px_rgba(72,56,20,0.10)] transition hover:shadow-[0_16px_36px_rgba(72,56,20,0.15)] backdrop-blur-lg ring-1 ring-white/35 xl:grid-cols-[minmax(330px,420px)_1fr]"
+        >
+          <div className="space-y-3">
+            <LabourCard
+              showBookButton={false}
+              showAvailabilityBadge={false}
+              actionLabel={t("Cancel")}
+              onAction={() => handleCancel(booking)}
+              actionDisabled={booking.status === "completed" || isDriverCancelWindowExpired}
+              actionClassName="bg-rose-500 hover:bg-rose-600 text-white"
+              labour={{
+                ...booking.listingId,
+                providerName: booking.providerId?.name,
+                locationName: booking.listingId?.locationName || "",
+              }}
+            />
 
-        <div className="w-[40%] p-4 border-r">
+            <div className="rounded-2xl border border-white/45 bg-white/50 px-4 py-3 text-sm text-slate-700 backdrop-blur-md ring-1 ring-white/30">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {t("Booking Schedule")}
+                </p>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${bookingStateClass}`}>
+                  {bookingStateLabel}
+                </span>
+              </div>
 
-        <LabourCard
-          showBookButton={false}
-          showAvailabilityBadge={false}
-          actionLabel={t("Cancel")}
-          onAction={() => handleCancel(booking)}
-          actionDisabled={booking.status === "completed" || isDriverCancelWindowExpired}
-          actionClassName="bg-red-500 hover:bg-red-600 text-white"
-          labour={{
-            ...booking.listingId,
-            providerName: booking.providerId?.name,
-            locationName: booking.area?.label,
-          }}
-        />
-     {/* Booking Time Info */}
-     <div className="px-6 py-3 border-t bg-gray-50 text-sm text-gray-700 space-y-1">
+              <div className="mt-3 space-y-2.5">
+                <p className="flex items-start justify-between gap-3">
+                  <span className="font-medium text-emerald-700">{t("Start")}</span>
+                  <span className="text-right text-slate-800">
+                    {new Date(booking.startAt).toLocaleString()}
+                    {isUpcoming && (
+                      <span className="block text-xs text-emerald-700">{t("starts in")} {formatDuration(startTs - now)}</span>
+                    )}
+                  </span>
+                </p>
 
-    <p>
-      <span className="font-medium text-green-700">{t("Start")}:</span>{" "}
-      {new Date(booking.startAt).toLocaleString()}
-      {isUpcoming && (
-        <span className="ml-2 text-xs text-green-700">({t("starts in")} {formatDuration(startTs - now)})</span>
-      )}
-    </p>
+                <p className="flex items-start justify-between gap-3">
+                  <span className="font-medium text-rose-600">{t("End")}</span>
+                  <span className="text-right text-slate-800">
+                    {new Date(booking.endAt).toLocaleString()}
+                    {isOngoing && (
+                      <span className="block text-xs text-rose-600">{t("ends in")} {formatDuration(endTs - now)}</span>
+                    )}
+                    {isEnded && (
+                      <span className="block text-xs text-slate-500">{t("ended")} {formatDuration(now - endTs)} {t("ago")}</span>
+                    )}
+                  </span>
+                </p>
 
-    <p>
-      <span className="font-medium text-red-600">{t("End")}:</span>{" "}
-      {new Date(booking.endAt).toLocaleString()}
-      {isOngoing && (
-        <span className="ml-2 text-xs text-red-600">({t("ends in")} {formatDuration(endTs - now)})</span>
-      )}
-      {isEnded && (
-        <span className="ml-2 text-xs text-gray-500">({t("ended")} {formatDuration(now - endTs)} {t("ago")})</span>
-      )}
-    </p>
+                <p className="flex items-center justify-between gap-3 border-t border-dashed border-slate-300/70 pt-2">
+                  <span className="font-medium text-blue-700">{t("Booked Since")}</span>
+                  <span className="font-semibold text-blue-700">{formatDuration(now - createdTs)}</span>
+                </p>
+              </div>
 
-    <p>
-      <span className="font-medium text-blue-700">{t("Booked Since")}:</span>{" "}
-      <span className="text-blue-700">{formatDuration(now - createdTs)}</span>
-    </p>
-
-    {isDriverCancelWindowExpired && (
-      <p className="text-xs text-red-600 font-medium">
-        {t("Cancel available only within 9 hours for driver bookings.")}
-      </p>
-    )}
-
-  </div>
-
-      </div>
-
-
-      <div className="w-[60%] flex flex-col justify-between">
-        <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-lime-50">
-          {booking.status === "confirmed" || booking.status === "started" ? (
-            <DriverTracking booking={booking} />
-          ) : (
-            <p className="text-sm text-gray-600">
-              {t("Tracking will start once your booking is confirmed.")}
-            </p>
-          )}
-        </div>
-
-      </div>
+              {isDriverCancelWindowExpired && (
+                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                  {t("Cancel available only within 9 hours for driver bookings.")}
+                </p>
+              )}
             </div>
+          </div>
 
-    )})}
-</div>
-</div>
-  </div>
-
-  </div>
-
-
-);
+          <div className="rounded-2xl border border-white/45 bg-gradient-to-r from-emerald-100/55 to-lime-100/50 p-4 backdrop-blur-lg ring-1 ring-white/30">
+            {booking.status === "confirmed" || booking.status === "started" ? (
+              <DriverTracking booking={booking} />
+            ) : (
+              <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-white/50 bg-white/40 px-5 text-center backdrop-blur-md">
+                <p className="text-sm text-slate-600">{t("Tracking will start once your booking is confirmed.")}</p>
+              </div>
+            )}
+          </div>
+        </article>
+      );
+    })}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
 
 }
 

@@ -3,6 +3,31 @@ const Job = require("../models/Job.model");
 
 const mongoose = require("mongoose");
 
+exports.uploadListingImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Image file is required",
+      });
+    }
+
+    const imageUrl = `${req.protocol}://${req.get("host")}/api/uploads/${req.file.filename}`;
+
+    return res.status(200).json({
+      success: true,
+      imageUrl,
+      fileName: req.file.filename,
+    });
+  } catch (err) {
+    console.error("UPLOAD LISTING IMAGE ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload listing image",
+    });
+  }
+};
+
 
 exports.createListing = async (req, res) => {
   try {
@@ -59,6 +84,7 @@ exports.createListing = async (req, res) => {
           ? req.body.available
           : true,
 
+      locationName: req.body.locationName,
       location: req.body.location,
       vehicleDetails: req.body.vehicleDetails,
       meta: req.body.meta,
@@ -222,6 +248,7 @@ exports.updateListing = async (req, res) => {
       "price",
       "priceUnit",
       "available",
+      "locationName",
       "location",
       "vehicleDetails",
       "meta",

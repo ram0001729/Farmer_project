@@ -8,7 +8,53 @@ const Listing = require("../models/Listing.model");
 const cache = {
   timestamp: 0,
   data: null,
+  previousPrices: null,
 };
+
+// Base prices (INR / quintal) for major Indian crops — realistic AGMARKNET reference values
+const BASE_PRICES = {
+  Wheat:       2450,
+  Paddy:       2183,
+  Rice:        3100,
+  Maize:       1850,
+  Cotton:      7200,
+  Soybean:     4820,
+  Groundnut:   6200,
+  Mustard:     5600,
+  Onion:        900,
+  Tomato:      1200,
+};
+
+// Per-crop realistic volatility bands (fraction of base price)
+const CROP_VOLATILITY = {
+  Tomato:  0.18,
+  Onion:   0.15,
+  Cotton:  0.06,
+  Soybean: 0.05,
+  default: 0.04,
+};
+
+let priceSeeds = null; // drifting prices that persist across refreshes
+
+function applyVolatility(current, cropName) {
+  const vol = CROP_VOLATILITY[cropName] ?? CROP_VOLATILITY.default;
+  const swing = (Math.random() * 2 - 1) * vol;     // -vol to +vol
+  const drift  = 1 + swing;
+  return Math.round(current * drift);
+}
+
+function buildDynamicPrices() {
+  if (!priceSeeds) {
+    // On first call, start exactly at base prices
+    priceSeeds = { ...BASE_PRICES };
+    return { ...priceSeeds };
+  }
+  // Each refresh, drift each crop's price from its last value
+  Object.keys(priceSeeds).forEach((crop) => {
+    priceSeeds[crop] = applyVolatility(priceSeeds[crop], crop);
+  });
+  return { ...priceSeeds };
+}
 
 function httpGetJson(url) {
   return new Promise((resolve, reject) => {
@@ -55,16 +101,11 @@ async function fetchExternalPrices() {
   const apiKey = process.env.COMMODITY_API_KEY;
   const apiUrl = process.env.COMMODITY_API_URL || "https://www.commodity-api.com/api/v1/prices";
 
-  // In case the API key is not configured, return stubbed values.
+  // In case the API key is not configured, simulate live prices with drift.
   if (!apiKey) {
     return {
-      source: "stub",
-      prices: {
-        Wheat: 2450,
-        Rice: 2100,
-        Maize: 1850,
-        Cotton: 7200,
-      },
+      source: "live-sim",
+      prices: buildDynamicPrices(),
     };
   }
 
@@ -101,14 +142,17 @@ exports.getMarketPrices = async (req, res) => {
     const refreshMs = getRefreshIntervalMs();
 
     if (!cache.data || now - cache.timestamp > refreshMs) {
+      const prevPrices = cache.data ? { ...cache.data.prices } : null;
       const external = await fetchExternalPrices();
 
+      cache.previousPrices = prevPrices;
       cache.data = {
         fetchedAt: new Date().toISOString(),
         source: external.source,
         volatility: VOLATILITY,
         refreshIntervalMs: refreshMs,
         prices: external.prices,
+        previousPrices: prevPrices,
       };
       cache.timestamp = now;
     }
@@ -202,9 +246,80 @@ async function seedItemsIfNeeded() {
   seedDone = true;
 }
 
+async function syncEquipmentListingsToMarketItems() {
+  const equipmentListings = await Listing.find({
+    providerRole: "equipment_provider",
+  }).select("_id ownerId title description price priceUnit available meta");
+
+  if (!equipmentListings.length) return;
+
+  const listingIds = equipmentListings.map((l) => String(l._id));
+
+  // Deactivate previously mirrored items whose source listing no longer exists.
+  await MarketItem.updateMany(
+    {
+      category: "equipment",
+      "meta.source": "listing",
+      "meta.sourceListingId": { $nin: listingIds },
+    },
+    { $set: { isActive: false } }
+  );
+
+  const ops = equipmentListings.map((listing) => {
+    const listingType = listing?.meta?.listingType === "rent" ? "rent" : "sell";
+    const normalizedUnit = ["hour", "day", "week"].includes(listing.priceUnit)
+      ? listing.priceUnit
+      : "day";
+
+    const update = {
+      sellerId: listing.ownerId,
+      name: listing.title,
+      category: "equipment",
+      description: listing.description || "",
+      brand: listing?.meta?.brand || "",
+      bestFor: listing?.meta?.useCase || "",
+      image: listing?.meta?.image || "",
+      price: Number(listing.price || 0),
+      unit: listing?.meta?.listingType === "rent" ? `per ${normalizedUnit}` : "per unit",
+      rentalAvailable: listingType === "rent",
+      rentalPrice: listingType === "rent" ? Number(listing.price || 0) : 0,
+      rentalUnit: normalizedUnit,
+      minimumRentalPeriod: 1,
+      stockQty: Number.isFinite(Number(listing?.meta?.stock))
+        ? Number(listing.meta.stock)
+        : listing.available
+          ? 1
+          : 0,
+      isActive: Boolean(listing.available),
+      meta: {
+        source: "listing",
+        sourceListingId: String(listing._id),
+        listingType,
+      },
+    };
+
+    return {
+      updateOne: {
+        filter: {
+          category: "equipment",
+          "meta.source": "listing",
+          "meta.sourceListingId": String(listing._id),
+        },
+        update: { $set: update },
+        upsert: true,
+      },
+    };
+  });
+
+  if (ops.length) {
+    await MarketItem.bulkWrite(ops, { ordered: false });
+  }
+}
+
 exports.listMarketItems = async (req, res) => {
   try {
     await seedItemsIfNeeded();
+    await syncEquipmentListingsToMarketItems();
 
     const { query, category } = req.query;
     const filter = { isActive: true };
@@ -304,9 +419,20 @@ exports.createMarketOrder = async (req, res) => {
       return res.status(403).json({ error: "Only farmers can place orders" });
     }
 
-    const { itemId, quantity = 1, paymentMethod, orderType = "purchase", rentalDuration } = req.body;
+    const {
+      itemId,
+      quantity = 1,
+      paymentMethod,
+      orderType = "purchase",
+      rentalDuration,
+      deliveryAddress,
+    } = req.body;
     if (!itemId || !paymentMethod) {
       return res.status(400).json({ error: "itemId and paymentMethod are required" });
+    }
+
+    if (!deliveryAddress?.fullAddress || !deliveryAddress?.pincode) {
+      return res.status(400).json({ error: "Delivery address and pincode are required" });
     }
 
     if (!["online", "offline"].includes(paymentMethod)) {
@@ -360,6 +486,12 @@ exports.createMarketOrder = async (req, res) => {
       unitPrice,
       totalAmount,
       paymentMethod,
+      deliveryAddress: {
+        fullAddress: String(deliveryAddress.fullAddress || "").trim(),
+        villageTown: String(deliveryAddress.villageTown || "").trim(),
+        pincode: String(deliveryAddress.pincode || "").trim(),
+        landmark: String(deliveryAddress.landmark || "").trim(),
+      },
       status: "placed",
     });
 

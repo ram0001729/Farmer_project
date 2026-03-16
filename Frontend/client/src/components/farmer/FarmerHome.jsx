@@ -51,6 +51,7 @@ function FarmerHome() {
               </h2>
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
   {providers
+    .filter((provider) => provider.providerRole === "driver")
     .map(provider => (
       <LabourCard
         key={provider._id}
@@ -60,35 +61,14 @@ function FarmerHome() {
 </div>
 
             </section>
-
-
-
-            {/* Equipment */}
-            {/* <section>
-              <h2 className="text-2xl font-bold text-gray-800 mb-6">
-                Available Equipment Providers
-              </h2>
-             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-  {providers
-    .map(provider => (
-      <LabourCard
-        key={provider._id}
-        labour={provider}
-      />
-    ))}
-</div>
- </section>
- */}
-
-
             {/* Labour */}
-            {/* <section>
+            <section>
               <h2 className="text-2xl font-bold text-gray-800 mb-6">
                  Available Labour
               </h2>
              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
   {providers
-    .filter(p => p.serviceType === "driver")
+    .filter((provider) => provider.providerRole === "labour")
     .map(provider => (
       <LabourCard
         key={provider._id}
@@ -97,7 +77,7 @@ function FarmerHome() {
     ))}
 </div>
 
-            </section> */}
+            </section>
 
             
             <FarmerTips />

@@ -9,7 +9,7 @@ router.patch("/:id/start", authenticate, bookingCtrl.startBooking);
 router.patch("/:id/complete", authenticate, bookingCtrl.completeBooking);
 router.patch("/:id/cancel", authenticate, bookingCtrl.cancelBooking);
 router.get("/me", authenticate, bookingCtrl.getMyBookings);
-router.get("/:id", authenticate, bookingCtrl.getBookingById);
 router.get("/provider", authenticate, bookingCtrl.getProviderBookings);
+router.get("/:id", authenticate, bookingCtrl.getBookingById);
 
 module.exports = router;

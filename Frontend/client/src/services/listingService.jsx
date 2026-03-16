@@ -78,3 +78,16 @@ export const updateDriverLocation = async (lat, lng) => {
   return res.data;
 };
 
+export const uploadListingImage = async (file) => {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const res = await api.post("/listings/upload-image", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return res.data;
+};
+

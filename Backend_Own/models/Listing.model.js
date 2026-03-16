@@ -19,6 +19,10 @@ const ListingSchema = new mongoose.Schema({
   price: Number, 
   priceUnit: { type: String, enum: ['hour','day','fixed'], default: 'hour' },
   available: { type: Boolean, default: true },
+  locationName: {
+    type: String,
+    trim: true,
+  },
 location: {
   type: { type: String, enum: ['Point'], default: 'Point' },
 coordinates: {

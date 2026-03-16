@@ -1,9 +1,13 @@
 const express = require('express')
 require('dotenv').config()
+const http = require('http');
+const { initSocket } = require('./utils/socket');
 const authRoutes=require('./routes/auth.routes')
 const listingRoutes=require('./routes/listing.routes')
 const DBconnect=require('./config/database')
 const app=express();
+const server = http.createServer(app);
+initSocket(server);
 app.use(express.json());
 const cors = require("cors");
 const bookingRoutes = require('./routes/booking.routes');
@@ -53,7 +57,7 @@ app.use("/api/news", newsRoutes);
 
 DBconnect()
 .then(()=>{
-app.listen(port,()=>{
+server.listen(port,()=>{
 console.log(`http://localhost:${port}`)
 
 })

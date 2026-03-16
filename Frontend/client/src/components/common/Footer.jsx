@@ -51,7 +51,7 @@ function Footer() {
       initial="hidden"
       whileInView="visible"
       viewport={{ once: true, amount: 0.25 }}
-      className="relative w-full mx-auto mt-24 rounded-3xl overflow-hidden"
+      className="relative w-full mx-auto mt-24  rounded-3xl overflow-hidden"
     >
 
       {/* Glow Background */}
@@ -153,3 +153,4 @@ function Footer() {
 }
 
 export default Footer;
+

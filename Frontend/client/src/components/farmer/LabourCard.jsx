@@ -1,8 +1,9 @@
 import { FiPhone } from "react-icons/fi";
 import { createBooking } from "../../services/bookingService";
+import { getLocationNameFromCoordinates } from "../../services/locationservice";
 import { useNavigate } from "react-router-dom";
 import { FiStar, FiMapPin } from "react-icons/fi";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SuccessLottieOverlay from "../common/SuccessLottieOverlay";
 
 function LabourCard({
@@ -16,9 +17,42 @@ function LabourCard({
 }) {
   const navigate = useNavigate();
 
+  const formattedCoordinates = Array.isArray(labour.location?.coordinates) && labour.location.coordinates.length === 2
+    ? `${labour.location.coordinates[1].toFixed(4)}, ${labour.location.coordinates[0].toFixed(4)}`
+    : null;
+
   const [showSuccess, setShowSuccess] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentType, setPaymentType] = useState(null);
+  const [resolvedLocationName, setResolvedLocationName] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadLocationName = async () => {
+      if (labour.locationName || labour.area?.label || labour.area?.value || typeof labour.area === "string") {
+        setResolvedLocationName("");
+        return;
+      }
+
+      const coords = labour.location?.coordinates;
+      if (!Array.isArray(coords) || coords.length !== 2) {
+        setResolvedLocationName("");
+        return;
+      }
+
+      const locationName = await getLocationNameFromCoordinates(coords[1], coords[0]);
+      if (isMounted) {
+        setResolvedLocationName(locationName);
+      }
+    };
+
+    loadLocationName();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [labour.location?.coordinates, labour.locationName, labour.area]);
 
   const getCurrentCoordinates = () =>
     new Promise((resolve) => {
@@ -28,9 +62,10 @@ function LabourCard({
       }
 
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
           const { longitude, latitude } = position.coords;
-          resolve([longitude, latitude]);
+          const locationName = await getLocationNameFromCoordinates(latitude, longitude);
+          resolve({ coordinates: [longitude, latitude], locationName });
         },
         () => resolve(null),
         {
@@ -56,15 +91,18 @@ const confirmBooking = async () => {
       return;
     }
 
-    const destinationCoordinates = await getCurrentCoordinates();
+    const destinationInfo = await getCurrentCoordinates();
 
     const payload = {
       listingId: labour._id,
       paymentType,
       startAt: new Date().toISOString(),
       endAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      area: { value: "local", label: "Local Area" },
-      ...(destinationCoordinates ? { destinationCoordinates } : {}),
+      area: {
+        value: destinationInfo?.locationName || "local",
+        label: destinationInfo?.locationName || "Local Area",
+      },
+      ...(destinationInfo?.coordinates ? { destinationCoordinates: destinationInfo.coordinates } : {}),
     };
 
     const res = await createBooking(payload);
@@ -85,18 +123,21 @@ const confirmBooking = async () => {
 };
   return (
     <div className="relative w-full max-w-sm">
-<div className="relative rounded-3xl p-4 bg-white border border-gray-200/90 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+<div className="relative rounded-3xl p-3.5 bg-white border border-gray-200/90 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
         {/* Image */}
         <div className="relative">
           <img
-            src="https://res.cloudinary.com/dwp9qjmdf/image/upload/v1769405806/ChatGPT_Image_Jan_26_2026_11_06_28_AM_u7qffy.png"
+            src={labour.providerRole === "driver"
+              ? "https://res.cloudinary.com/dwp9qjmdf/image/upload/v1769405806/ChatGPT_Image_Jan_26_2026_11_06_28_AM_u7qffy.png"
+              : "https://res.cloudinary.com/dwp9qjmdf/image/upload/v1769405972/ChatGPT_Image_Jan_26_2026_11_09_15_AM_b13az0.png"
+            }
             alt="Service"
-            className="w-full h-48 object-cover rounded-2xl"
+            className="w-full h-40 object-cover rounded-2xl"
           />
-          <div className="absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-t from-black/35 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-14 rounded-b-2xl bg-gradient-to-t from-black/35 to-transparent" />
         {showAvailabilityBadge && (
           <span
-            className={`absolute top-4 left-4 px-3 py-1 text-xs font-semibold rounded-full backdrop-blur-md border shadow-sm ${
+            className={`absolute top-3 left-3 px-2.5 py-1 text-[11px] font-semibold rounded-full backdrop-blur-md border shadow-sm ${
               labour.available
                 ? "bg-emerald-500/95 text-white border-emerald-300"
                 : "bg-rose-500/95 text-white border-rose-300"
@@ -108,32 +149,42 @@ const confirmBooking = async () => {
         </div>
 
         {/* Content */}
-<div className="mt-5 space-y-4">
+<div className="mt-4 space-y-3.5">
 
-  <div className="space-y-1">
-    <p className="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">Service Provider</p>
-    <h3 className="text-lg font-semibold text-gray-900 leading-tight">
-      {labour.providerName || labour.ownerId?.name || labour.name}
-    </h3>
+  <div className="flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">Service Provider</p>
+      <h3 className="text-[1.65rem] font-bold text-gray-900 leading-tight truncate">
+        {labour.providerName || labour.ownerId?.name || labour.name}
+      </h3>
+    </div>
+    <div className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-700 text-sm font-semibold">
+      <FiStar className="text-sm" />
+      {labour.rating ?? "0"}
+    </div>
   </div>
 
-  {/* Service title */}
-  <p className="text-sm text-gray-600 leading-relaxed">
+  <p className="text-sm text-gray-600 leading-snug -mt-1">
     {labour.title}
   </p>
 
-  {/* Experience */}
-  <div className="flex justify-between items-center text-sm rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
-    <span className="text-gray-500">Experience</span>
-    <span className="font-semibold text-gray-900">
-      {labour.experience ? `${labour.experience} yrs` : "N/A"}
-    </span>
+  <div className="grid grid-cols-2 gap-2">
+    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+      <p className="text-[11px] text-gray-500">Experience</p>
+      <p className="text-base font-semibold text-gray-900 mt-0.5">
+        {labour.experience ? `${labour.experience} yrs` : "N/A"}
+      </p>
+    </div>
+    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+      <p className="text-[11px] text-gray-500">Distance</p>
+      <p className="text-base font-semibold text-gray-900 mt-0.5">
+        {labour.distance != null ? `${(labour.distance / 1000).toFixed(1)} km` : "Nearby"}
+      </p>
+    </div>
   </div>
 
-  {/* Price + Rating */}
   <div className="flex items-center justify-between rounded-xl bg-emerald-50/70 border border-emerald-100 px-3 py-2.5">
-
-    <div className="flex items-baseline gap-1">
+    <div className="flex items-baseline gap-1.5">
       <span className="text-2xl font-bold text-green-700">
         ₹{labour.price ?? "N/A"}
       </span>
@@ -141,21 +192,8 @@ const confirmBooking = async () => {
         / {labour.priceUnit || "day"}
       </span>
     </div>
-
-    <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-700 text-sm font-semibold">
-      <FiStar className="text-sm" />
-      {labour.rating ?? "0"}
-    </div>
-
-  </div>
-
-  {/* Distance */}
-  <div className="flex items-center gap-2 text-sm text-gray-600">
-    <FiMapPin className="text-green-600 text-sm" />
-    <span>
-      {labour.distance != null
-        ? `${(labour.distance / 1000).toFixed(1)} km away`
-        : "Nearby"}
+    <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 rounded-full px-2.5 py-1">
+      Premium Service
     </span>
   </div>
 
@@ -165,28 +203,29 @@ const confirmBooking = async () => {
       labour.locationName ||
       labour.area?.label ||
       labour.area?.value ||
-      (typeof labour.area === "string" ? labour.area : null);
+      (typeof labour.area === "string" ? labour.area : null) ||
+      resolvedLocationName;
 
     const locationLabel =
       areaName ||
-      (labour.location?.coordinates ? "Nearby" : null);
+      formattedCoordinates;
 
     return locationLabel ? (
-      <div className="flex items-center gap-2 text-sm text-gray-600">
-        <FiMapPin className="text-emerald-600 text-sm" />
-        <span>{`Location: ${locationLabel}`}</span>
+      <div className="flex items-center gap-2 text-sm text-gray-600 rounded-xl border border-gray-100 px-3 py-2 bg-white">
+        <FiMapPin className="text-emerald-600 text-sm shrink-0" />
+        <span className="truncate font-bold text-gray-800">{`Location: ${locationLabel}`}</span>
       </div>
     ) : null;
   })()}
 
 </div>
         {/* Actions */}
-        <div className="mt-5 pt-4 border-t border-gray-100 space-y-3">
+        <div className="mt-4 pt-3.5 border-t border-gray-100 space-y-2.5">
           <div className="flex gap-3">
             <a
               href={labour.mobile ? `tel:${labour.mobile}` : undefined}
-              className={`${showBookButton ? "flex-1" : "w-full"} flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-semibold transition ${
-                labour.mobile ? "bg-[#157A8C] hover:bg-[#1c94a8]" : "bg-gray-300 cursor-not-allowed pointer-events-none"
+              className={`${showBookButton ? "flex-1" : "w-full"} flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-semibold transition-all duration-300 ${
+                labour.mobile ? "bg-[#1d8192] hover:bg-[#176d7b] shadow-md shadow-cyan-700/20" : "bg-gray-300 cursor-not-allowed pointer-events-none"
               }`}
               aria-disabled={!labour.mobile}
             >
@@ -197,9 +236,9 @@ const confirmBooking = async () => {
               <button
                 disabled={!labour.available}
                 onClick={handleBooking}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${
+                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
                   labour.available
-                    ? "bg-[#F57C00] hover:bg-[#ff9a3c] text-white"
+                    ? "bg-[#f28a00] hover:bg-[#d97900] text-white shadow-md shadow-orange-600/25"
                     : "bg-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
               >

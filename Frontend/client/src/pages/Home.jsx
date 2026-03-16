@@ -1,6 +1,7 @@
 import Hero from "@/components/common/Hero";
 import MiddleSection from "@/components/common/MiddleSection";
 import AboutSection from "@/components/common/AboutSection";
+import LatestSchemesSection from "@/components/common/LatestSchemesSection";
 import Footer from "@/components/common/Footer";
 import { motion, useScroll, useSpring } from "framer-motion";
 
@@ -13,7 +14,7 @@ function Home() {
   });
 
   return (
-    <div className="relative min-h-screen flex flex-col overflow-hidden bg-[#f7f9ef]">
+    <div className="relative min-h-screen flex flex-col overflow-hidden ">
       <motion.div
         style={{ scaleX }}
         className="fixed left-0 top-0 z-50 h-1 w-full origin-left bg-gradient-to-r from-[#1f7a1f] via-[#f57c00] to-[#0f9b9c]"
@@ -54,6 +55,15 @@ function Home() {
           viewport={{ once: true, amount: 0.2 }}
         >
           <MiddleSection />
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 26 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: "easeOut", delay: 0.15 }}
+          viewport={{ once: true, amount: 0.2 }}
+        >
+          <LatestSchemesSection />
         </motion.div>
       </main>
 

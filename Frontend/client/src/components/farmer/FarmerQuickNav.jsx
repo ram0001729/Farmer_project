@@ -1,4 +1,4 @@
-import { FiUsers, FiTruck, FiTool, FiSearch } from "react-icons/fi";
+import { FiSearch } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
@@ -67,24 +67,6 @@ onClick={() =>
           Book Labour
         </button>
 
-        {/* Book Equipment */}
-        <button
-          onClick={() => navigate("/search?providerRole=equipment_provider&available=true")
-}
-          className="
-            flex-1 flex items-center justify-center gap-3
-            py-3 rounded-xl font-semibold text-black
-
-            bg-[#F57C00]
-            hover:from-amber-700 hover:to-orange-800
-            transition-all duration-300
-            shadow-md shadow-amber-600/30
-            hover:shadow-lg hover:-translate-y-0.5
-          "
-        >
-          Book Equipment
-        </button>
-
         {/* Farmer Forum */}
         <button
           onClick={() => navigate("/FarmerForum")}
@@ -98,7 +80,7 @@ onClick={() =>
           Ask Farming Help
         </button>
 
-        <button
+        {/* <button
           onClick={() => navigate("/farmer-market")}
           className="
             flex-1 flex items-center justify-center gap-3
@@ -111,9 +93,9 @@ onClick={() =>
           "
         >
           Buy Inputs
-        </button>
+        </button> */}
 
-        <button
+        {/* <button
           onClick={() => navigate("/farmer-news")}
           className="
             flex-1 flex items-center justify-center gap-3
@@ -126,7 +108,7 @@ onClick={() =>
           "
         >
           Success Stories
-        </button>
+        </button> */}
 
         {/* Book Driver */}
         <button

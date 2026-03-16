@@ -41,6 +41,12 @@ const MarketOrderSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    deliveryAddress: {
+      fullAddress: { type: String, default: "" },
+      villageTown: { type: String, default: "" },
+      pincode: { type: String, default: "" },
+      landmark: { type: String, default: "" },
+    },
     status: {
       type: String,
       enum: ["placed", "confirmed", "cancelled"],

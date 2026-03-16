@@ -8,7 +8,7 @@ function BookedLabourCard({ booking }) {
   return (
     <div className="relative w-full max-w-sm">
 
-      <div className="relative rounded-3xl p-4 bg-[linear-gradient(135deg,#7BC96F_0%,#2FA84F_45%,#1B5E20_100%)] backdrop-blur-xl border border-[#157A8C]/20">
+      <div className="relative rounded-3xl p-4  backdrop-blur-xl border border-[#157A8C]/20">
 
         {/* Image */}
         <div className="relative">
