@@ -1,9 +1,9 @@
-import FarmerCard from "@/components/provider/FarmerCard";
+import FarmerCard from "@/components/Provider/FarmerCard";
 import { useEffect, useState } from "react";
 import { getProviderBookings } from "@/services/bookingService";
 import { updateDriverLocation, setProviderAvailability } from "@/services/listingService";
 import { getProviderAnalytics, getProviderMarketOrders } from "@/services/marketService";
-import QuickNav from "@/components/provider/QuickNav";
+import QuickNav from "@/components/Provider/QuickNav";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "@/context/SocketContext";
 import { FiBell, FiX } from "react-icons/fi";
