@@ -53,56 +53,8 @@ const GOVERNMENT_SCHEMES = [
   },
 ];
 
-const DEFAULT_NEWS = [
-  {
-    farmerName: "Ramesh Patil",
-    state: "Maharashtra",
-    crop: "Pomegranate",
-    title: "From water stress to drip-led profitability",
-    summary:
-      "Ramesh shifted to drip irrigation and fertigation, reducing water usage by 38% and improving output quality in two seasons.",
-    impact: "Income +42% in 18 months",
-    source: "Indian Express Agriculture",
-    link: "https://indianexpress.com/",
-  },
-  {
-    farmerName: "Kavitha Reddy",
-    state: "Telangana",
-    crop: "Turmeric",
-    title: "Farmer producer group improved market price",
-    summary:
-      "By joining a local producer group and timing sales better, Kavitha secured stronger mandi prices and reduced middleman loss.",
-    impact: "Net margin +27%",
-    source: "PIB Agriculture",
-    link: "https://pib.gov.in/",
-  },
-  {
-    farmerName: "Harjit Singh",
-    state: "Punjab",
-    crop: "Wheat",
-    title: "Precision soil testing improved yield consistency",
-    summary:
-      "Soil-card based nutrient planning helped Harjit optimize fertilizer usage and maintain stable yields across irregular weather cycles.",
-    impact: "Fertilizer cost -19%",
-    source: "ICAR News",
-    link: "https://icar.org.in/",
-  },
-];
-
-let seeded = false;
-async function seedIfNeeded() {
-  if (seeded) return;
-  const count = await SuccessNews.countDocuments();
-  if (count === 0) {
-    await SuccessNews.insertMany(DEFAULT_NEWS);
-  }
-  seeded = true;
-}
-
 exports.getSuccessNews = async (req, res) => {
   try {
-    await seedIfNeeded();
-
     const { query } = req.query;
     const filter = { isPublished: true };
 

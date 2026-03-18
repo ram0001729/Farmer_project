@@ -1,6 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  FiClock,
+  FiImage,
+  FiMessageCircle,
+  FiSearch,
+  FiSend,
+  FiStar,
+  FiTrendingUp,
+  FiX,
+} from "react-icons/fi";
 import { addReply, createPost, getPosts } from "../../services/forumService";
+
+const FORM_DRAFT_KEY = "farmer_forum_post_draft_v1";
+const EMPTY_FORM = {
+  crop: "",
+  title: "",
+  description: "",
+};
+
+const QUICK_TEMPLATES = [
+  {
+    label: "Pest",
+    title: "Sudden pest spread in field",
+    description:
+      "I noticed pest attack in the last 2 days. Leaf damage is increasing fast. Weather has been humid and warm. What immediate control worked for you?",
+  },
+  {
+    label: "Disease",
+    title: "Leaf spots and yellowing issue",
+    description:
+      "Leaves are showing spots and yellow patches after recent rains. I adjusted irrigation but symptoms continue. Please suggest treatment and prevention steps.",
+  },
+  {
+    label: "Price",
+    title: "Best time to sell crop in mandi",
+    description:
+      "Market rates are fluctuating this week. I can hold stock for around 10 to 15 days. Should I sell now or wait? Looking for practical selling strategy.",
+  },
+];
 
 function getImageUrl(path) {
   if (!path) return "";
@@ -36,10 +74,19 @@ function FarmerForum() {
   const [selectedCrop, setSelectedCrop] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [expandedReplies, setExpandedReplies] = useState({});
-  const [form, setForm] = useState({
-    crop: "",
-    title: "",
-    description: "",
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = localStorage.getItem(FORM_DRAFT_KEY);
+      if (!saved) return EMPTY_FORM;
+      const parsed = JSON.parse(saved);
+      return {
+        crop: String(parsed.crop || ""),
+        title: String(parsed.title || ""),
+        description: String(parsed.description || ""),
+      };
+    } catch {
+      return EMPTY_FORM;
+    }
   });
   const [image, setImage] = useState(null);
   const fileRef = useRef(null);
@@ -82,8 +129,9 @@ function FarmerForum() {
       });
 
       setPosts((prev) => [response.post, ...prev]);
-      setForm({ crop: "", title: "", description: "" });
+      setForm(EMPTY_FORM);
       setImage(null);
+      localStorage.removeItem(FORM_DRAFT_KEY);
       if (fileRef.current) fileRef.current.value = "";
     } catch (err) {
       alert(err.response?.data?.message || t("Post creation failed"));
@@ -112,7 +160,18 @@ function FarmerForum() {
     const totalPosts = posts.length;
     const totalReplies = posts.reduce((acc, post) => acc + (post.replies?.length || 0), 0);
     const activeCrops = new Set(posts.map((post) => post.crop?.trim().toLowerCase()).filter(Boolean)).size;
-    return { totalPosts, totalReplies, activeCrops };
+    const avgRepliesPerPost = totalPosts ? (totalReplies / totalPosts).toFixed(1) : "0.0";
+    return { totalPosts, totalReplies, activeCrops, avgRepliesPerPost };
+  }, [posts]);
+
+  const featuredPosts = useMemo(() => {
+    return [...posts]
+      .sort((a, b) => {
+        const replyDiff = (b.replies?.length || 0) - (a.replies?.length || 0);
+        if (replyDiff !== 0) return replyDiff;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      })
+      .slice(0, 3);
   }, [posts]);
 
   const filteredPosts = useMemo(() => {
@@ -146,26 +205,81 @@ function FarmerForum() {
     fetchPosts();
   }, []);
 
+  useEffect(() => {
+    const hasContent = form.crop || form.title || form.description;
+    if (!hasContent) {
+      localStorage.removeItem(FORM_DRAFT_KEY);
+      return;
+    }
+    localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(form));
+  }, [form]);
+
+  const descriptionLen = form.description.length;
+  const descriptionLimit = 600;
+
+  const applyTemplate = (template) => {
+    setForm((prev) => ({
+      crop: prev.crop || "Tomato",
+      title: template.title,
+      description: template.description,
+    }));
+  };
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_center,#F5F5DC_0%,#D9F99D_50%,#C4E07A_100%)] py-8 px-3 sm:px-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl md:text-3xl font-extrabold text-green-900">{t("Farmer Help Community")}</h1>
-          <p className="text-sm md:text-base text-green-900/80 max-w-2xl mx-auto">
-            {t("Ask crop questions, share practical advice, and learn from real field experiences.")}
-          </p>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_8%_0%,#e8ffd9_0%,#f9ffef_26%,#f6fef2_58%,#ebfbe0_100%)] py-8 px-3 sm:px-4">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div className="relative overflow-hidden rounded-3xl border border-green-200 bg-[linear-gradient(135deg,#ffffff_0%,#f2ffe4_46%,#fff1d8_100%)] p-6 shadow-[0_20px_40px_rgba(33,72,29,0.12)]">
+          <div className="absolute -right-12 -top-10 h-40 w-40 rounded-full bg-green-200/45 blur-2xl" />
+          <div className="absolute -left-8 -bottom-14 h-36 w-36 rounded-full bg-orange-200/40 blur-2xl" />
+          <div className="relative text-center space-y-2">
+            <h1 className="text-2xl md:text-3xl font-extrabold text-green-900 inline-flex items-center gap-2">
+              <FiStar className="text-[#e77b00]" /> {t("Farmer Help Community")}
+            </h1>
+            <p className="text-sm md:text-base text-green-900/80 max-w-2xl mx-auto">
+              {t("Ask crop questions, share practical advice, and learn from real field experiences.")}
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 pt-1">
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Verified peer advice
+              </span>
+              <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                Fast crop-specific discussions
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <StatCard label={t("Total Posts")} value={stats.totalPosts} />
           <StatCard label={t("Total Replies")} value={stats.totalReplies} />
           <StatCard label={t("Active Crops")} value={stats.activeCrops} />
+          <StatCard label={t("Avg Replies/Post")} value={stats.avgRepliesPerPost} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           <aside className="lg:col-span-4 space-y-3 lg:sticky lg:top-20">
             <div className="bg-white/90 backdrop-blur rounded-2xl shadow border border-green-100 p-4 space-y-3">
-              <h2 className="text-base font-semibold text-green-800">{t("Start a Discussion")}</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-green-800">{t("Start a Discussion")}</h2>
+                {(form.crop || form.title || form.description) && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 font-semibold">
+                    Draft saved
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_TEMPLATES.map((template) => (
+                  <button
+                    key={template.label}
+                    type="button"
+                    onClick={() => applyTemplate(template)}
+                    className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-[11px] font-semibold text-green-700 hover:bg-green-100"
+                  >
+                    {template.label} template
+                  </button>
+                ))}
+              </div>
 
               <input
                 placeholder={t("Crop (e.g., Tomato)")}
@@ -184,13 +298,24 @@ function FarmerForum() {
               <textarea
                 placeholder={t("Describe symptoms, weather, and what you tried...")}
                 value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    description: e.target.value.slice(0, descriptionLimit),
+                  })
+                }
                 className="w-full p-2.5 rounded-lg border border-green-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 min-h-24 text-sm"
               />
 
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>{t("Add field context for better replies.")}</span>
-                <span>{form.description.length}/600</span>
+                <span className={descriptionLen > 540 ? "text-orange-600 font-semibold" : ""}>{descriptionLen}/{descriptionLimit}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-green-100 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-orange-400 transition-all duration-300"
+                  style={{ width: `${Math.min(100, (descriptionLen / descriptionLimit) * 100)}%` }}
+                />
               </div>
 
               <input
@@ -204,8 +329,9 @@ function FarmerForum() {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full py-2 rounded-lg border-2 border-dashed border-green-400 text-green-700 font-medium hover:bg-green-50 text-sm"
+                className="w-full py-2 rounded-lg border-2 border-dashed border-green-400 text-green-700 font-medium hover:bg-green-50 text-sm inline-flex items-center justify-center gap-2"
               >
+                <FiImage />
                 {image ? t("Change Image") : t("Upload Crop Image")}
               </button>
 
@@ -223,8 +349,9 @@ function FarmerForum() {
                       setImage(null);
                       if (fileRef.current) fileRef.current.value = "";
                     }}
-                    className="absolute top-2 right-2 bg-red-500 text-white px-2.5 py-1 text-xs rounded-md"
+                    className="absolute top-2 right-2 bg-red-500 text-white px-2.5 py-1 text-xs rounded-md inline-flex items-center gap-1"
                   >
+                    <FiX className="text-[11px]" />
                     {t("Remove")}
                   </button>
                 </div>
@@ -249,12 +376,15 @@ function FarmerForum() {
           <main className="lg:col-span-8 space-y-3">
             <div className="bg-white/90 backdrop-blur rounded-2xl shadow border border-green-100 p-3.5 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                <input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder={t("Search title, crop, or description")}
-                  className="w-full p-2.5 rounded-lg border border-green-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 text-sm"
-                />
+                <div className="relative">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-green-700 text-sm" />
+                  <input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder={t("Search title, crop, or description")}
+                    className="w-full pl-9 p-2.5 rounded-lg border border-green-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 text-sm"
+                  />
+                </div>
 
                 <select
                   value={selectedCrop}
@@ -305,6 +435,23 @@ function FarmerForum() {
               )}
             </div>
 
+            {featuredPosts.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                {featuredPosts.map((post) => (
+                  <article key={`featured-${post._id}`} className="rounded-xl border border-green-200 bg-gradient-to-br from-white via-emerald-50 to-lime-100/80 p-3 shadow-sm">
+                    <p className="text-[11px] uppercase tracking-wide font-semibold text-emerald-700 inline-flex items-center gap-1">
+                      <FiTrendingUp /> Featured discussion
+                    </p>
+                    <h3 className="mt-1.5 text-sm font-bold text-[#1f3f28] line-clamp-2">{post.title}</h3>
+                    <p className="mt-1 text-xs text-[#52725a]">{post.crop}</p>
+                    <p className="mt-2 text-xs text-[#52725a] inline-flex items-center gap-1">
+                      <FiMessageCircle /> {post.replies?.length || 0} {t("replies")}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+
             {fetching ? (
               <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -335,7 +482,8 @@ function FarmerForum() {
                       <div className="flex flex-wrap items-start justify-between gap-2.5">
                         <div className="space-y-1">
                           <h2 className="text-lg font-bold text-gray-900">{post.title}</h2>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-gray-500 inline-flex items-center gap-1">
+                            <FiClock className="text-[11px]" />
                             {t("By")} {post.farmer?.name || t("Farmer")} • {timeAgo(post.createdAt, t)}
                           </p>
                         </div>
@@ -423,14 +571,20 @@ function ReplyBox({ onReply }) {
       <input
         value={msg}
         onChange={(e) => setMsg(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            submitReply();
+          }
+        }}
         className="flex-1 border border-green-200 p-2.5 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 text-sm"
         placeholder={t("Share your advice...")}
       />
       <button
         onClick={submitReply}
         disabled={!msg.trim() || sending}
-        className="px-4 rounded-lg bg-green-600 text-white sm:w-auto w-full text-sm"
+        className="px-4 rounded-lg bg-green-600 text-white sm:w-auto w-full text-sm inline-flex items-center justify-center gap-1.5"
       >
+        <FiSend className="text-[12px]" />
         {sending ? t("Sending...") : t("Reply")}
       </button>
     </div>

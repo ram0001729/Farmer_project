@@ -8,7 +8,13 @@ import { useTranslation } from "react-i18next";
 
 const DRIVER_CANCEL_WINDOW_MS = 9 * 60 * 60 * 1000;
 
+function toTimestamp(value, fallback = Date.now()) {
+  const ts = new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : fallback;
+}
+
 function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "0m";
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -94,7 +100,7 @@ function MyBookings() {
     return true;
   });
 
-  const visibleBookings = filteredBookings.filter((b) => b.listingId);
+  const visibleBookings = filteredBookings;
 
   const metricCards = [
     {
@@ -222,14 +228,18 @@ function MyBookings() {
           ) : (
             <div className="space-y-6">
               {visibleBookings.map((booking) => {
-      const createdTs = new Date(booking.createdAt).getTime();
-      const startTs = new Date(booking.startAt).getTime();
-      const endTs = new Date(booking.endAt).getTime();
-      const isDriverBooking = booking?.providerRole === "driver" || booking?.listingId?.providerRole === "driver";
+      const listingData = booking?.listingId && typeof booking.listingId === "object" ? booking.listingId : null;
+      const createdTs = toTimestamp(booking?.createdAt, now);
+      const startTs = toTimestamp(booking?.startAt, createdTs);
+      const endTs = toTimestamp(booking?.endAt, startTs);
+      const isDriverBooking = booking?.providerRole === "driver" || listingData?.providerRole === "driver";
       const isDriverCancelWindowExpired = isDriverBooking && now - createdTs > DRIVER_CANCEL_WINDOW_MS;
-      const isUpcoming = now < startTs;
-      const isOngoing = now >= startTs && now <= endTs;
-      const isEnded = now > endTs;
+      const isCompleted = booking?.status === "completed";
+      const isStarted = booking?.status === "started";
+      const isConfirmed = booking?.status === "confirmed";
+      const isUpcoming = !isCompleted && !isStarted && isConfirmed;
+      const isOngoing = isStarted;
+      const isEnded = isCompleted;
       const bookingStateLabel = isEnded ? t("Completed") : isOngoing ? t("Ongoing") : t("Upcoming");
       const bookingStateClass = isEnded
         ? "bg-gray-100 text-gray-700 border-gray-200"
@@ -243,19 +253,26 @@ function MyBookings() {
           className="grid gap-5 rounded-2xl border border-white/45 bg-white/45 p-4 shadow-[0_12px_32px_rgba(72,56,20,0.10)] transition hover:shadow-[0_16px_36px_rgba(72,56,20,0.15)] backdrop-blur-lg ring-1 ring-white/35 xl:grid-cols-[minmax(330px,420px)_1fr]"
         >
           <div className="space-y-3">
-            <LabourCard
-              showBookButton={false}
-              showAvailabilityBadge={false}
-              actionLabel={t("Cancel")}
-              onAction={() => handleCancel(booking)}
-              actionDisabled={booking.status === "completed" || isDriverCancelWindowExpired}
-              actionClassName="bg-rose-500 hover:bg-rose-600 text-white"
-              labour={{
-                ...booking.listingId,
-                providerName: booking.providerId?.name,
-                locationName: booking.listingId?.locationName || "",
-              }}
-            />
+            {listingData ? (
+              <LabourCard
+                showBookButton={false}
+                showAvailabilityBadge={false}
+                actionLabel={t("Cancel")}
+                onAction={() => handleCancel(booking)}
+                actionDisabled={booking.status === "completed" || isDriverCancelWindowExpired}
+                actionClassName="bg-rose-500 hover:bg-rose-600 text-white"
+                labour={{
+                  ...listingData,
+                  providerName: booking.providerId?.name,
+                  locationName: listingData?.locationName || "",
+                }}
+              />
+            ) : (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800">
+                <p className="font-semibold">{t("Service listing is no longer available")}</p>
+                <p className="mt-1 text-xs text-amber-700">{t("Booking details are still shown below.")}</p>
+              </div>
+            )}
 
             <div className="rounded-2xl border border-white/45 bg-white/50 px-4 py-3 text-sm text-slate-700 backdrop-blur-md ring-1 ring-white/30">
               <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2">
@@ -271,7 +288,7 @@ function MyBookings() {
                 <p className="flex items-start justify-between gap-3">
                   <span className="font-medium text-emerald-700">{t("Start")}</span>
                   <span className="text-right text-slate-800">
-                    {new Date(booking.startAt).toLocaleString()}
+                    {Number.isFinite(startTs) ? new Date(startTs).toLocaleString() : t("Not available")}
                     {isUpcoming && (
                       <span className="block text-xs text-emerald-700">{t("starts in")} {formatDuration(startTs - now)}</span>
                     )}
@@ -281,7 +298,7 @@ function MyBookings() {
                 <p className="flex items-start justify-between gap-3">
                   <span className="font-medium text-rose-600">{t("End")}</span>
                   <span className="text-right text-slate-800">
-                    {new Date(booking.endAt).toLocaleString()}
+                    {Number.isFinite(endTs) ? new Date(endTs).toLocaleString() : t("Not available")}
                     {isOngoing && (
                       <span className="block text-xs text-rose-600">{t("ends in")} {formatDuration(endTs - now)}</span>
                     )}
@@ -306,7 +323,7 @@ function MyBookings() {
           </div>
 
           <div className="rounded-2xl border border-white/45 bg-gradient-to-r from-emerald-100/55 to-lime-100/50 p-4 backdrop-blur-lg ring-1 ring-white/30">
-            {booking.status === "confirmed" || booking.status === "started" ? (
+            {(booking.status === "confirmed" || booking.status === "started") && listingData ? (
               <DriverTracking booking={booking} />
             ) : (
               <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-white/50 bg-white/40 px-5 text-center backdrop-blur-md">

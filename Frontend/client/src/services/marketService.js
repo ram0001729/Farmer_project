@@ -53,3 +53,8 @@ export const getMarketPrices = async () => {
   const res = await api.get("/market/prices");
   return res.data;
 };
+
+export const getNearbyCropMarkets = async (params = {}) => {
+  const res = await api.get("/market/nearby-crop-markets", { params });
+  return res.data;
+};

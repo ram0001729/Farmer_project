@@ -358,7 +358,7 @@ function FarmerNews() {
   });
 
   return (
-    <div className="min-h-screen px-6 py-8 bg-[radial-gradient(circle_at_top_left,#fff2d7_0%,#d9f99d_28%,#ffffff_72%),radial-gradient(circle_at_bottom_right,#ffd7a8_0%,rgba(255,215,168,0)_42%),radial-gradient(circle_at_center,#ecfccb_0%,rgba(236,252,203,0)_45%)]">
+    <div className="min-h-screen px-6 py-8 ">
       <div className="max-w-6xl mx-auto space-y-6">
         <section className="rounded-3xl border border-[#d8e8d2] bg-[linear-gradient(160deg,#ffffff_0%,#f4ffe8_35%,#fff2df_100%)] shadow-[0_10px_28px_rgba(48,72,34,0.08)] p-6">
           <div className="flex items-center justify-between gap-4 flex-wrap">

@@ -25,6 +25,45 @@ const BASE_PRICES = {
   Tomato:      1200,
 };
 
+const CROP_ALIASES = {
+  wheat: "Wheat",
+  paddy: "Paddy",
+  rice: "Rice",
+  maize: "Maize",
+  corn: "Maize",
+  cotton: "Cotton",
+  soybean: "Soybean",
+  soya: "Soybean",
+  groundnut: "Groundnut",
+  peanut: "Groundnut",
+  mustard: "Mustard",
+  onion: "Onion",
+  tomato: "Tomato",
+};
+
+const TRUSTED_MARKET_REFERENCES = [
+  { marketName: "Azadpur Mandi", district: "North West Delhi", state: "Delhi", locationName: "Delhi", latitude: 28.7041, longitude: 77.1025 },
+  { marketName: "Lasalgaon APMC", district: "Nashik", state: "Maharashtra", locationName: "Lasalgaon, Nashik", latitude: 20.1642, longitude: 74.2398 },
+  { marketName: "Vashi APMC", district: "Thane", state: "Maharashtra", locationName: "Vashi, Navi Mumbai", latitude: 19.076, longitude: 72.8777 },
+  { marketName: "Koyambedu Market", district: "Chennai", state: "Tamil Nadu", locationName: "Koyambedu, Chennai", latitude: 13.0827, longitude: 80.2707 },
+  { marketName: "Bowenpally Market", district: "Hyderabad", state: "Telangana", locationName: "Bowenpally, Hyderabad", latitude: 17.385, longitude: 78.4867 },
+  { marketName: "Yeshwanthpur Market", district: "Bengaluru Urban", state: "Karnataka", locationName: "Yeshwanthpur, Bengaluru", latitude: 12.9716, longitude: 77.5946 },
+  { marketName: "Kalamna Market", district: "Nagpur", state: "Maharashtra", locationName: "Kalamna, Nagpur", latitude: 21.1458, longitude: 79.0882 },
+  { marketName: "Indore Chhavni Mandi", district: "Indore", state: "Madhya Pradesh", locationName: "Indore", latitude: 22.7196, longitude: 75.8577 },
+  { marketName: "Karnal Grain Market", district: "Karnal", state: "Haryana", locationName: "Karnal", latitude: 29.6857, longitude: 76.9905 },
+  { marketName: "Ludhiana Mandi", district: "Ludhiana", state: "Punjab", locationName: "Ludhiana", latitude: 30.9009, longitude: 75.8573 },
+  { marketName: "Kanpur Mandi", district: "Kanpur Nagar", state: "Uttar Pradesh", locationName: "Kanpur", latitude: 26.4499, longitude: 80.3319 },
+  { marketName: "Lucknow Mandi", district: "Lucknow", state: "Uttar Pradesh", locationName: "Lucknow", latitude: 26.8467, longitude: 80.9462 },
+  { marketName: "Patna Mandi", district: "Patna", state: "Bihar", locationName: "Patna", latitude: 25.5941, longitude: 85.1376 },
+  { marketName: "Raipur Mandi", district: "Raipur", state: "Chhattisgarh", locationName: "Raipur", latitude: 21.2514, longitude: 81.6296 },
+  { marketName: "Ahmedabad APMC", district: "Ahmedabad", state: "Gujarat", locationName: "Ahmedabad", latitude: 23.0225, longitude: 72.5714 },
+  { marketName: "Rajkot Mandi", district: "Rajkot", state: "Gujarat", locationName: "Rajkot", latitude: 22.3039, longitude: 70.8022 },
+  { marketName: "Jaipur Mandi", district: "Jaipur", state: "Rajasthan", locationName: "Jaipur", latitude: 26.9124, longitude: 75.7873 },
+  { marketName: "Kota Mandi", district: "Kota", state: "Rajasthan", locationName: "Kota", latitude: 25.2138, longitude: 75.8648 },
+  { marketName: "Bhopal Mandi", district: "Bhopal", state: "Madhya Pradesh", locationName: "Bhopal", latitude: 23.2599, longitude: 77.4126 },
+  { marketName: "Kolkata Market", district: "Kolkata", state: "West Bengal", locationName: "Kolkata", latitude: 22.5726, longitude: 88.3639 },
+];
+
 // Per-crop realistic volatility bands (fraction of base price)
 const CROP_VOLATILITY = {
   Tomato:  0.18,
@@ -35,6 +74,211 @@ const CROP_VOLATILITY = {
 };
 
 let priceSeeds = null; // drifting prices that persist across refreshes
+
+function normalizeCropName(value) {
+  if (!value) return "Wheat";
+  const key = String(value).trim().toLowerCase();
+  return CROP_ALIASES[key] || (Object.keys(BASE_PRICES).includes(value) ? value : "Wheat");
+}
+
+function toNumber(value, fallback = null) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function haversineDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function findReferenceMarket(rawMarketName, rawDistrict, rawState) {
+  const marketName = String(rawMarketName || "").trim().toLowerCase();
+  const district = String(rawDistrict || "").trim().toLowerCase();
+  const state = String(rawState || "").trim().toLowerCase();
+  return TRUSTED_MARKET_REFERENCES.find((m) => {
+    const sameMarket = marketName && m.marketName.toLowerCase() === marketName;
+    const sameDistrictState = district && state && m.district.toLowerCase() === district && m.state.toLowerCase() === state;
+    return sameMarket || sameDistrictState;
+  });
+}
+
+function dynamicCropPrice(crop) {
+  const nowMs = Date.now();
+  const bucket = Math.floor(nowMs / 120000);
+  const base = BASE_PRICES[crop] || BASE_PRICES.Wheat;
+  const amplitude = CROP_VOLATILITY[crop] ?? CROP_VOLATILITY.default;
+  const wave = Math.sin(bucket * 0.85) + Math.cos(bucket * 0.35);
+  const drift = 1 + (wave * amplitude) / 3;
+  return Math.max(100, Math.round(base * drift));
+}
+
+function getRecordValue(record, keys) {
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null && String(record[key]).trim() !== "") {
+      return record[key];
+    }
+  }
+  return null;
+}
+
+async function fetchTrustedNearbyMarkets(crop) {
+  const apiKey = process.env.MANDI_TRUSTED_API_KEY;
+  const resourceId = process.env.MANDI_TRUSTED_RESOURCE_ID || "9ef84268-d588-465a-a308-a864a43d0070";
+  const baseUrl = process.env.MANDI_TRUSTED_API_URL || `https://api.data.gov.in/resource/${resourceId}`;
+
+  if (!apiKey) {
+    return { source: "simulated-trusted-fallback", records: [] };
+  }
+
+  const cropFilter = encodeURIComponent(crop);
+  const url = `${baseUrl}?api-key=${encodeURIComponent(apiKey)}&format=json&limit=100&filters[commodity]=${cropFilter}`;
+  const json = await httpGetJson(url);
+  const records = Array.isArray(json?.records) ? json.records : [];
+  return {
+    source: "agmarknet-data-gov-in",
+    records,
+  };
+}
+
+function buildFallbackMarkets(crop, farmerLat, farmerLng, limit) {
+  const base = dynamicCropPrice(crop);
+  const markets = TRUSTED_MARKET_REFERENCES.map((market, idx) => {
+    const localBias = 1 + ((idx % 5) - 2) * 0.01;
+    const pricePerQuintal = Math.max(100, Math.round(base * localBias));
+    const distanceKm = haversineDistanceKm(farmerLat, farmerLng, market.latitude, market.longitude);
+    return {
+      marketName: market.marketName,
+      locationName: market.locationName,
+      district: market.district,
+      state: market.state,
+      pricePerQuintal,
+      distanceKm: Number(distanceKm.toFixed(1)),
+      coordinates: [market.longitude, market.latitude],
+      lastUpdated: new Date().toISOString(),
+      trusted: true,
+    };
+  })
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, limit);
+
+  return {
+    source: "simulated-trusted-fallback",
+    markets,
+  };
+}
+
+exports.getNearbyCropMarkets = async (req, res) => {
+  try {
+    const crop = normalizeCropName(req.query.crop);
+    const limit = Math.max(1, Math.min(25, Number(req.query.limit) || 10));
+    const farmerLat = toNumber(req.query.lat, 20.5937);
+    const farmerLng = toNumber(req.query.lng, 78.9629);
+
+    const trustedResult = await fetchTrustedNearbyMarkets(crop);
+    const trustedRecords = trustedResult.records;
+
+    if (!trustedRecords.length) {
+      const fallback = buildFallbackMarkets(crop, farmerLat, farmerLng, limit);
+      return res.json({
+        success: true,
+        data: {
+          crop,
+          source: fallback.source,
+          farmerLocation: { latitude: farmerLat, longitude: farmerLng },
+          markets: fallback.markets,
+        },
+      });
+    }
+
+    const normalized = trustedRecords
+      .map((record) => {
+        const marketName = getRecordValue(record, ["market", "market_name", "marketName"]);
+        const district = getRecordValue(record, ["district", "district_name"]);
+        const state = getRecordValue(record, ["state", "state_name"]);
+        const locationName = [marketName, district, state].filter(Boolean).join(", ");
+
+        const modalPrice = toNumber(
+          getRecordValue(record, ["modal_price", "modalPrice", "price", "modalprice"]),
+          null
+        );
+
+        if (!marketName || modalPrice == null) {
+          return null;
+        }
+
+        let latitude = toNumber(getRecordValue(record, ["latitude", "lat"]), null);
+        let longitude = toNumber(getRecordValue(record, ["longitude", "lng", "lon"]), null);
+
+        if (latitude == null || longitude == null) {
+          const ref = findReferenceMarket(marketName, district, state);
+          if (ref) {
+            latitude = ref.latitude;
+            longitude = ref.longitude;
+          }
+        }
+
+        const distanceKm =
+          latitude != null && longitude != null
+            ? haversineDistanceKm(farmerLat, farmerLng, latitude, longitude)
+            : Number.MAX_SAFE_INTEGER;
+
+        return {
+          marketName: String(marketName),
+          locationName,
+          district: district || "",
+          state: state || "",
+          pricePerQuintal: Math.round(modalPrice),
+          distanceKm: Number.isFinite(distanceKm) && distanceKm !== Number.MAX_SAFE_INTEGER
+            ? Number(distanceKm.toFixed(1))
+            : null,
+          coordinates:
+            latitude != null && longitude != null ? [Number(longitude), Number(latitude)] : null,
+          lastUpdated: getRecordValue(record, ["arrival_date", "updated_at", "timestamp"]) || new Date().toISOString(),
+          trusted: true,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const da = a.distanceKm == null ? Number.MAX_SAFE_INTEGER : a.distanceKm;
+        const db = b.distanceKm == null ? Number.MAX_SAFE_INTEGER : b.distanceKm;
+        return da - db;
+      })
+      .slice(0, limit);
+
+    if (!normalized.length) {
+      const fallback = buildFallbackMarkets(crop, farmerLat, farmerLng, limit);
+      return res.json({
+        success: true,
+        data: {
+          crop,
+          source: fallback.source,
+          farmerLocation: { latitude: farmerLat, longitude: farmerLng },
+          markets: fallback.markets,
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        crop,
+        source: trustedResult.source,
+        farmerLocation: { latitude: farmerLat, longitude: farmerLng },
+        markets: normalized,
+      },
+    });
+  } catch (err) {
+    console.error("NEARBY CROP MARKETS ERROR:", err);
+    return res.status(502).json({ success: false, message: "Failed to fetch nearby crop markets" });
+  }
+};
 
 function applyVolatility(current, cropName) {
   const vol = CROP_VOLATILITY[cropName] ?? CROP_VOLATILITY.default;

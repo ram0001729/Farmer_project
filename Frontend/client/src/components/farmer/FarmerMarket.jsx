@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FiArrowDown, FiArrowUp, FiDroplet, FiFilter, FiMinus, FiPackage, FiRefreshCw, FiSearch, FiShoppingCart, FiTool, FiTrendingUp } from "react-icons/fi";
-import { createMarketOrder, getMarketItems, getMarketPrices, getMyMarketOrders } from "@/services/marketService";
+import { FiArrowDown, FiArrowUp, FiDroplet, FiFilter, FiMapPin, FiMinus, FiPackage, FiRefreshCw, FiSearch, FiShoppingCart, FiTool, FiTrendingUp } from "react-icons/fi";
+import { createMarketOrder, getMarketItems, getMarketPrices, getMyMarketOrders, getNearbyCropMarkets } from "@/services/marketService";
 import { useTranslation } from "react-i18next";
 import SuccessLottieOverlay from "@/components/common/SuccessLottieOverlay";
 
@@ -141,9 +141,21 @@ function FarmerMarket() {
   const [orderHistory, setOrderHistory] = useState([]);
   const [marketPrices, setMarketPrices] = useState(null);
   const [pricesRefreshing, setPricesRefreshing] = useState(false);
+  const [selectedCrop, setSelectedCrop] = useState("Wheat");
+  const [nearbyMarkets, setNearbyMarkets] = useState([]);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState("");
+  const [farmerCoords, setFarmerCoords] = useState(null);
+  const [nearbySource, setNearbySource] = useState("");
   const prevPricesRef = useRef({});
   const [showOrderSuccess, setShowOrderSuccess] = useState(false);
   const [orderSuccessMsg, setOrderSuccessMsg] = useState("");
+
+  const cropOptions = useMemo(() => {
+    const fromLive = marketPrices?.prices ? Object.keys(marketPrices.prices) : [];
+    const merged = [...new Set([...fromLive, ...Object.keys(CROP_SYMBOLS)])];
+    return merged;
+  }, [marketPrices]);
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -207,6 +219,60 @@ function FarmerMarket() {
     const interval = setInterval(fetchPrices, 30_000); // refresh every 30s for liveness
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!cropOptions.includes(selectedCrop) && cropOptions.length > 0) {
+      setSelectedCrop(cropOptions[0]);
+    }
+  }, [cropOptions, selectedCrop]);
+
+  useEffect(() => {
+    if (!navigator?.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFarmerCoords({
+          lat: Number(position.coords.latitude),
+          lng: Number(position.coords.longitude),
+        });
+      },
+      () => {
+        setFarmerCoords(null);
+      },
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    const fetchNearbyMarkets = async () => {
+      if (!selectedCrop) return;
+
+      setNearbyLoading(true);
+      setNearbyError("");
+
+      try {
+        const params = {
+          crop: selectedCrop,
+          limit: 10,
+        };
+        if (farmerCoords?.lat != null && farmerCoords?.lng != null) {
+          params.lat = farmerCoords.lat;
+          params.lng = farmerCoords.lng;
+        }
+
+        const res = await getNearbyCropMarkets(params);
+        const markets = Array.isArray(res?.data?.markets) ? res.data.markets : [];
+        setNearbyMarkets(markets);
+        setNearbySource(res?.data?.source || "");
+      } catch (err) {
+        setNearbyMarkets([]);
+        setNearbyError(err.response?.data?.message || t("Unable to load nearby crop markets right now."));
+      } finally {
+        setNearbyLoading(false);
+      }
+    };
+
+    fetchNearbyMarkets();
+  }, [selectedCrop, farmerCoords, t]);
 
   const filteredItems = useMemo(() => {
     let mapped = items.map((item) => ({
@@ -294,7 +360,7 @@ function FarmerMarket() {
   };
 
   return (
-    <div className="min-h-screen px-6 py-8 bg-[radial-gradient(circle_at_top,#F5F5DC_0%,#D9F99D_45%,#ffffff_100%)]">
+    <div className="min-h-screen px-6 py-8 ">
       {showOrderSuccess && (
         <SuccessLottieOverlay
           message={orderSuccessMsg || t("Order Placed!")}
@@ -378,6 +444,74 @@ function FarmerMarket() {
             </div>
           </div>
         )}
+
+        <div className="rounded-2xl bg-white border border-green-200 shadow-sm px-5 py-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div>
+              <h2 className="text-base font-bold text-[#1f5f2c]">Top 10 Nearby Markets By Crop</h2>
+              <p className="text-xs text-[#5f7a65] mt-0.5">
+                Dynamic mandi prices with market name and location from trusted feed.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-[#47624e]">Crop</span>
+              <select
+                value={selectedCrop}
+                onChange={(e) => setSelectedCrop(e.target.value)}
+                className="rounded-lg border border-green-200 bg-[#f8fbf5] px-3 py-1.5 text-sm font-semibold text-[#254a2f] outline-none"
+              >
+                {cropOptions.map((crop) => (
+                  <option key={crop} value={crop}>{crop}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {nearbySource ? (
+            <div className="mb-3 text-[11px] inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
+              Source: {nearbySource}
+            </div>
+          ) : null}
+
+          {nearbyError ? <p className="text-sm text-rose-600 mb-2">{nearbyError}</p> : null}
+
+          {nearbyLoading ? (
+            <p className="text-sm text-[#5f7a65]">Loading nearby markets...</p>
+          ) : nearbyMarkets.length === 0 ? (
+            <p className="text-sm text-[#5f7a65]">No nearby market data available for this crop.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {nearbyMarkets.slice(0, 10).map((market, idx) => (
+                <div key={`${market.marketName}-${idx}`} className="rounded-xl border border-green-100 bg-gradient-to-br from-white to-green-50/60 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-[#284b31]">{idx + 1}. {market.marketName}</p>
+                      <p className="text-xs text-[#5f7a65] mt-1 flex items-center gap-1">
+                        <FiMapPin className="text-[#356545]" />
+                        {market.locationName || [market.district, market.state].filter(Boolean).join(", ") || "Location unavailable"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] text-[#7a8f80]">{selectedCrop}</p>
+                      <p className="text-sm font-bold text-[#c46800]">
+                        Rs {Number(market.pricePerQuintal || 0).toLocaleString("en-IN")}
+                      </p>
+                      <p className="text-[10px] text-[#7a8f80]">per quintal</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-[#4a6651]">
+                    <span>
+                      {market.distanceKm != null ? `${market.distanceKm} km away` : "Distance unavailable"}
+                    </span>
+                    <span>
+                      Updated {market.lastUpdated ? new Date(market.lastUpdated).toLocaleDateString() : "recently"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {orderHistory.length > 0 && (
           <div className="rounded-2xl bg-white border border-green-200 shadow-sm p-5">

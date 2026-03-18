@@ -4,6 +4,7 @@ const marketCtrl = require("../controllers/market.controller");
 const { authenticate } = require("../middlewares/auth.middleware");
 
 router.get("/prices", marketCtrl.getMarketPrices);
+router.get("/nearby-crop-markets", marketCtrl.getNearbyCropMarkets);
 router.get("/items", marketCtrl.listMarketItems);
 router.post("/items", authenticate, marketCtrl.createMarketItem);
 router.get("/items/me", authenticate, marketCtrl.getMyMarketItems);
